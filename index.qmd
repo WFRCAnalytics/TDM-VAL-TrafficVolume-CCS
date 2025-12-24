@@ -1,0 +1,12 @@
+---
+title: Observed vs Modeled Volume
+subtitle: Validating the Modeled Traffic Volume
+description: This notebook is used to validate the traffic volume assigned by the Travel Demand Model against the observed traffic volume data captured by the Continuous Counting Stations (CCS).
+author:
+ - name: Pukar Bhandari
+   email: pukar.bhandari@wfrc.utah.gov
+   affiliation:
+     - name: Wasatch Front Regional Council
+       url: "https://wfrc.utah.gov/"
+date: "2025-12-24"
+---
