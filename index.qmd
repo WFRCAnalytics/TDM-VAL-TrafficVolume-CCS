@@ -10,3 +10,172 @@ author:
        url: "https://wfrc.utah.gov/"
 date: "2025-12-24"
 ---
+
+## Environment Setup
+
+### Import Standard Libraries
+
+```{python}
+# For Analysis
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+
+# For Visualization
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# misc
+import os
+import requests
+from pathlib import Path
+import importlib.util
+
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+## Environment Variables
+
+
+## Helper Functions
+
+```{python}
+def fetch_github(
+    url: str,
+    mode: str = "private",
+    token_env_var: str = "GITHUB_TOKEN"
+) -> requests.Response:
+    """
+    Fetch content from GitHub repositories.
+
+    Args:
+        url: GitHub raw URL (e.g., https://raw.githubusercontent.com/...)
+        mode: "public" for public repos, "private" for private repos requiring authentication
+        token_env_var: Name of environment variable containing GitHub token (default: GITHUB_TOKEN)
+
+    Returns:
+        requests.Response object
+
+    Raises:
+        ValueError: If token is missing for private mode or invalid mode
+        requests.HTTPError: If request fails
+    """
+    # Validate mode
+    if mode not in ["public", "private"]:
+        raise ValueError(f"mode must be 'public' or 'private', got '{mode}'")
+
+    if mode == "public":
+        response = requests.get(url, timeout=30)
+    else:
+        token = os.getenv(token_env_var)
+        if not token:
+            raise ValueError(
+                f"GitHub token not found in environment variable '{token_env_var}'. "
+                f"Check your .env file has: {token_env_var}=your_token_here"
+            )
+
+        headers = {
+            'Authorization': f'token {token}',
+            'Accept': 'application/vnd.github.v3.raw'
+        }
+        response = requests.get(url, headers=headers, timeout=30)
+
+    response.raise_for_status()
+    return response
+```
+
+## Setup BigQuery
+
+```{python}
+# # Import global TDM functions from remote 'Resource' repo
+
+# Fetch and import BigQuery module
+response = fetch_github(
+    'https://raw.githubusercontent.com/WFRCAnalytics/Resources/refs/heads/master/2-Python/global-functions/BigQuery.py',
+    mode="public"
+)
+
+BigQuery = importlib.util.module_from_spec(importlib.util.spec_from_loader('BigQuery', loader=None))
+exec(response.text, BigQuery.__dict__)
+
+# Initiatlize BigQuery Client
+client = BigQuery.getBigQueryClient_Confidential2023UtahHTS()
+```
+
+# Load Data
+
+### UDOT CCS Traffic Counts
+
+```{python}
+# Load Linked Trips data from UDOT's 023 Continuos Counter Station Data
+df_ccs_2023 = client.query(
+    "SELECT * FROM " + 'wfrc-modeling-data.src_udot_continuous_count_2023.data'
+).to_dataframe()
+
+df_ccs_2023
+```
+
+```{python}
+# Check the number of unique count stations
+df_ccs_2023["STATION"].nunique()
+```
+
+### CCS Station
+
+```{python}
+# 1. Setup Configuration
+base_url = "https://services.arcgis.com/pA2nEVnB6tquxgOW/ArcGIS/rest/services/CCS_Data_v2/FeatureServer/1"
+query_params = "query?where=1=1&outFields=*&f=geojson"
+
+# Define paths
+output_dir = Path("_data/raw")
+gdb_path = output_dir / "CCS_Data_v2.gdb"
+
+# 2. Check if file exists locally
+if not gdb_path.exists():
+    print(f"File not found at {gdb_path}. Downloading from ArcGIS Feature Service...")
+
+    # Ensure directory exists
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Read directly from the URL using GeoPandas
+        gdf_download = gpd.read_file(f"{base_url}/{query_params}")
+
+        # --- Cast Integer64 columns to Int32 to avoid Float conversion ---
+        if 'SITEID' in gdf_download.columns:
+            gdf_download['SITEID'] = gdf_download['SITEID'].astype('int32')
+
+        # Export to Geodatabase
+        # Note: writing to GDB requires the 'FileGDB' or 'OpenFileGDB' driver support
+        print(f"Saving to {gdb_path}...")
+        gdf_download.to_file(gdb_path, layer="CCS_Data_v2", driver="OpenFileGDB")
+        print("Download and export complete.")
+
+    except Exception as e:
+        print(f"Error during download or export: {e}")
+else:
+    print(f"File found locally at {gdb_path}. Skipping download.")
+
+# 3. Load the data back into Python
+gdf_ccs_locations = gpd.read_file(gdb_path, layer="CCS_Data_v2")
+print(gdf.head())
+```
+
+```{python}
+# Check the number of unique count stations
+gdf_ccs_locations["STATION"].nunique()
+```
+
+```{python}
+# View the stations that have no count data in 2023
+gdf_ccs_locations[
+    ~gdf_ccs_locations["STATION"].isin(df_ccs_2023["STATION"].unique())
+].explore()
+```
+
+## Modeled Traffic Volumes
+
+
+# Processing
