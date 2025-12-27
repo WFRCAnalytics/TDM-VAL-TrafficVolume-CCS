@@ -37,6 +37,9 @@ load_dotenv()
 
 ## Environment Variables
 
+```{python}
+CRS_UTM = "EPSG:26912"
+```
 
 ## Helper Functions
 
@@ -85,6 +88,48 @@ def fetch_github(
     return response
 ```
 
+```{python}
+# Create function to read ArcGIS FeatureLayer or Table
+def arc_read(url, where="1=1", outFields="*", outSR=4326, **kwargs):
+    """
+    Read an ArcGIS FeatureLayer or Table to a GeoDataFrame.
+
+    Parameters:
+    url (str): The ArcGIS REST service URL (e.g., ending in /FeatureServer/0)
+    where (str): SQL WHERE clause for filtering. Default: "1=1"
+    outFields (str): Comma-separated field names. Default: "*"
+    outSR (int): Output spatial reference EPSG code. Default: 4326
+    **kwargs: Additional query parameters passed to the ArcGIS REST API
+
+    Returns:
+    geopandas.GeoDataFrame: Spatial data from the service
+    """
+    # Ensure URL ends with /query
+    if not url.endswith('/query'):
+        url = url.rstrip('/') + '/query'
+
+    # Build query parameters
+    params = {
+        'where': where,
+        'outFields': outFields,
+        'returnGeometry': 'true',
+        'outSR': outSR,
+        'f': 'geojson'
+    }
+
+    # Add any additional parameters
+    params.update(kwargs)
+
+    # Make request
+    response = requests.get(url, params=params)
+    response.raise_for_status() # Good practice to check for HTTP errors
+
+    # Read as GeoDataFrame
+    # We use io.BytesIO to handle the response content safely for read_file
+    import io
+    return gpd.read_file(io.BytesIO(response.content), engine="pyogrio")
+```
+
 ## Setup BigQuery
 
 ```{python}
@@ -104,6 +149,48 @@ client = BigQuery.getBigQueryClient_Confidential2023UtahHTS()
 ```
 
 # Load Data
+
+### Regional Boundary
+
+```{python}
+# 1. Configuration
+service_url = "https://services1.arcgis.com/taguadKoI1XFwivx/ArcGIS/rest/services/RegionalBoundaryComponents/FeatureServer/0"
+
+output_dir = Path("_data/raw")
+gdb_path = output_dir / "RegionalBoundary.gpkg"
+layer_name = "RegionalBoundaryComponents"
+
+# 2. Check if file exists locally, otherwise download
+if not gdb_path.exists():
+    print(f"File not found at {gdb_path}. Downloading Regional Boundaries...")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Use the custom arc_read function
+        gdf_download = arc_read(service_url)
+
+        # Export to Geodatabase
+        print(f"Saving to {gdb_path}...")
+        gdf_download.to_file(gdb_path, layer=layer_name, driver="GPKG")
+        print("Download and export complete.")
+
+    except Exception as e:
+        print(f"Error during download: {e}")
+else:
+    print(f"File found locally at {gdb_path}. Skipping download.")
+
+# 3. Read from local GDB with Filter and Dissolve
+gdf_region = gpd.read_file(
+    gdb_path,
+    layer=layer_name,
+    where="PlanOrg IN ('MAG MPO', 'WFRC MPO')"
+).dissolve().to_crs(CRS_UTM)
+
+# Fix the holes and slivers in the regional boundary
+gdf_region['geometry'] = gdf_region.buffer(1).buffer(-1)
+
+gdf_region.explore()
+```
 
 ### UDOT CCS Traffic Counts
 
@@ -125,12 +212,10 @@ df_ccs_2023["STATION"].nunique()
 
 ```{python}
 # 1. Setup Configuration
-base_url = "https://services.arcgis.com/pA2nEVnB6tquxgOW/ArcGIS/rest/services/CCS_Data_v2/FeatureServer/1"
-query_params = "query?where=1=1&outFields=*&f=geojson"
-
-# Define paths
+service_url = "https://services.arcgis.com/pA2nEVnB6tquxgOW/ArcGIS/rest/services/CCS_Data_v2/FeatureServer/1"
 output_dir = Path("_data/raw")
-gdb_path = output_dir / "CCS_Data_v2.gdb"
+gdb_path = output_dir / "CCS_Data_v2.gpkg"
+layer_name = "CCS_Data_v2"
 
 # 2. Check if file exists locally
 if not gdb_path.exists():
@@ -140,17 +225,16 @@ if not gdb_path.exists():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # Read directly from the URL using GeoPandas
-        gdf_download = gpd.read_file(f"{base_url}/{query_params}")
+        # --- Use custom arc_read function ---
+        gdf_download = arc_read(service_url)
 
         # --- Cast Integer64 columns to Int32 to avoid Float conversion ---
         if 'SITEID' in gdf_download.columns:
             gdf_download['SITEID'] = gdf_download['SITEID'].astype('int32')
 
         # Export to Geodatabase
-        # Note: writing to GDB requires the 'FileGDB' or 'OpenFileGDB' driver support
         print(f"Saving to {gdb_path}...")
-        gdf_download.to_file(gdb_path, layer="CCS_Data_v2", driver="OpenFileGDB")
+        gdf_download.to_file(gdb_path, layer="CCS_Data_v2", driver="GPKG")
         print("Download and export complete.")
 
     except Exception as e:
@@ -159,8 +243,18 @@ else:
     print(f"File found locally at {gdb_path}. Skipping download.")
 
 # 3. Load the data back into Python
-gdf_ccs_locations = gpd.read_file(gdb_path, layer="CCS_Data_v2")
-print(gdf.head())
+# We load from the local GDB (cache) and apply the County filter here
+gdf_ccs_locations = (
+    gpd.read_file(
+        gdb_path,
+        layer="CCS_Data_v2",
+        where="COUNTY IN ('Box Elder', 'Weber', 'Davis', 'Salt Lake', 'Utah')"
+    )
+    .to_crs(CRS_UTM)
+    .pipe(gpd.clip, mask=gdf_region)
+)
+
+gdf_ccs_locations.explore()
 ```
 
 ```{python}
@@ -177,5 +271,135 @@ gdf_ccs_locations[
 
 ## Modeled Traffic Volumes
 
+```{python}
+df_model_volume = pd.read_csv(
+    Path("_data/raw/Summary_SEGID.csv")
+)
 
-# Processing
+df_model_volume
+```
+
+## Model Network
+
+Here we filter out links that has `SEGID` corresponding to modeled volume data.
+
+```{python}
+# 1. Get the list of unique SEGIDs from your model volume dataframe
+# We filter out any NAs just to be safe
+valid_segids = df_model_volume['SEGID'].dropna().unique().tolist()
+
+# 2. Create the SQL query
+# We force conversion to string using str(x), then use repr() to wrap it in quotes.
+# Example: 0006_152.6 -> '0006_152.6' (with quotes for SQL)
+segid_str = ', '.join(map(lambda x: repr(str(x)), valid_segids))
+
+# 3. Load the network
+gdf_network_v10 = gpd.read_file(
+    Path("_data/raw/WFv1000_MasterNet/WFv1000_MasterNet_20250821 - Link.shp"),
+    where=f"SEGID IN ({segid_str})",
+    engine="pyogrio"
+).to_crs(CRS_UTM)
+
+len(gdf_network_v10)
+```
+
+Verify if the number of unique ID in traffic volume data and network data are the same.
+
+```{python}
+gdf_network_v10['SEGID'].nunique() == df_model_volume['SEGID'].nunique()
+```
+
+Additionally, let's confirm that multiple links have same `SEGID`.
+
+```{python}
+# This will show you which SEGIDs have the most geographic pieces
+counts = gdf_network_v10['SEGID'].value_counts()
+print(counts.head(10))
+
+# To see the average number of links per segment:
+print(f"Average links per SEGID: {len(gdf_network_v10) / df_model_volume['SEGID'].nunique():.2f}")
+```
+
+# Data Cleaning
+
+## Merge Traffic Counts and Station
+
+```{python}
+gdf_traffic_counts = gdf_ccs_locations.merge(
+    df_ccs_2023,
+    on="STATION",
+    how="inner"
+)
+gdf_traffic_counts
+```
+
+## Merge Modeled Volume and Network
+
+```{python}
+gdf_network_dissolved = (
+    # 1. Prepare Network Data for Dissolve
+    # We keep SEGID (key), geometry (for map), and STREET (for tooltips/validation)
+    # Most other attributes (FT, CO_FIPS, Volumes) are already in df_model_volume
+    gdf_network_v10[['SEGID', 'STREET', 'geometry']].copy()
+    # 2. Dissolve geometries by SEGID
+    # This aggregates the multiple links per segment into a single MultiLineString
+    .dissolve(
+        by='SEGID',
+        aggfunc={'STREET': 'first'}, # Keep the first street name found
+        as_index=False
+    )
+)
+
+# 3. Merge with Modeled Volume Data
+# We merge 'inner' to ensure we have both geometry and model data for all rows
+gdf_model_segments = gdf_network_dissolved.merge(
+    df_model_volume,
+    on='SEGID',
+    how='inner'
+)
+
+gdf_model_segments
+```
+
+```{python}
+gdf_model_segments.explore()
+```
+
+# Spatial Operations
+
+```{python}
+# 1. Find the nearest network link for each CCS Station
+# We use the CCS stations as the 'left' dataframe because we want to iterate
+# through every station and find its single closest neighbor.
+gdf_ccs_mapped = gpd.sjoin_nearest(
+    gdf_ccs_locations,
+    gdf_model_segments[['SEGID', 'STREET', 'geometry']], # Only keep keys/geometry to keep it clean
+    how="left",          # Keep all stations
+    distance_col="distance_meters" # Optional: records the distance to the match
+)
+
+# 2. Quality Control (Optional but Recommended)
+# View the results sorted by distance (Descending)
+# This puts the most "suspicious" matches (furthest away) at the top
+gdf_ccs_mapped.sort_values("distance_meters", ascending=False)[
+    ['STATION', 'SEGID', 'STREET', 'distance_meters']
+]
+```
+
+```{python}
+# Merge model links with station geometry
+gdf_links_with_dist = gdf_model_segments.merge(
+    gdf_ccs_locations[['SEGID', 'geometry']],
+    on='SEGID',
+    how='left',
+    suffixes=('', '_station')
+)
+
+# Calculate distance between link geometry and station geometry
+gdf_links_with_dist['distance_meters'] = gdf_links_with_dist.geometry.distance(
+    gpd.GeoSeries(gdf_links_with_dist['geometry_station'], crs=CRS_UTM)
+)
+
+# Clean up (Optional: remove the extra geometry column if you want)
+gdf_links_with_dist.drop(columns=['geometry_station'], inplace=True)
+```
