@@ -192,22 +192,6 @@ gdf_region['geometry'] = gdf_region.buffer(1).buffer(-1)
 gdf_region.explore()
 ```
 
-### UDOT CCS Traffic Counts
-
-```{python}
-# Load Linked Trips data from UDOT's 023 Continuos Counter Station Data
-df_ccs_2023 = client.query(
-    "SELECT * FROM " + 'wfrc-modeling-data.src_udot_continuous_count_2023.data'
-).to_dataframe()
-
-df_ccs_2023
-```
-
-```{python}
-# Check the number of unique count stations
-df_ccs_2023["STATION"].nunique()
-```
-
 ### CCS Station
 
 ```{python}
@@ -229,8 +213,8 @@ if not gdb_path.exists():
         gdf_download = arc_read(service_url)
 
         # --- Cast Integer64 columns to Int32 to avoid Float conversion ---
-        if 'SITEID' in gdf_download.columns:
-            gdf_download['SITEID'] = gdf_download['SITEID'].astype('int32')
+        if "SITEID" in gdf_download.columns:
+            gdf_download["SITEID"] = gdf_download["SITEID"].astype("int32")
 
         # Export to Geodatabase
         print(f"Saving to {gdb_path}...")
@@ -244,15 +228,12 @@ else:
 
 # 3. Load the data back into Python
 # We load from the local GDB (cache) and apply the County filter here
-gdf_ccs_locations = (
-    gpd.read_file(
-        gdb_path,
-        layer="CCS_Data_v2",
-        where="COUNTY IN ('Box Elder', 'Weber', 'Davis', 'Salt Lake', 'Utah')"
-    )
-    .to_crs(CRS_UTM)
-    .pipe(gpd.clip, mask=gdf_region)
-)
+gdf_ccs_locations = gpd.read_file(
+    gdb_path,
+    layer="CCS_Data_v2",
+    # where="COUNTY IN ('Box Elder', 'Weber', 'Davis', 'Salt Lake', 'Utah')",
+    mask=gdf_region,
+).to_crs(CRS_UTM)
 
 gdf_ccs_locations.explore()
 ```
@@ -262,6 +243,82 @@ gdf_ccs_locations.explore()
 gdf_ccs_locations["STATION"].nunique()
 ```
 
+### UDOT CCS Traffic Counts
+
+```{python}
+# Extract unique stations and format them as a SQL list string
+# This creates a string like: "'301', '302', '405'"
+station_ids = gdf_ccs_locations["STATION"].unique()
+sql_station_list = ", ".join([str(x) for x in station_ids])
+```
+
+```{python}
+# Define query
+query = f"""
+    SELECT
+        STATION,
+        CAST(ROUND(AVG(AM_SUM)) AS INT64) as AVG_AM_VOL,
+        CAST(ROUND(AVG(MD_SUM)) AS INT64) as AVG_MD_VOL,
+        CAST(ROUND(AVG(PM_SUM)) AS INT64) as AVG_PM_VOL,
+        CAST(ROUND(AVG(EV_SUM)) AS INT64) as AVG_EV_VOL,
+        CAST(ROUND(AVG(DAILY_SUM)) AS INT64) as AVG_DY_VOL
+    FROM (
+        SELECT
+            STATION,
+            DATE_ONLY,
+            SUM(CASE WHEN HOUR BETWEEN 6 AND 8 THEN VOLUME ELSE 0 END) as AM_SUM,
+            SUM(CASE WHEN HOUR BETWEEN 9 AND 14 THEN VOLUME ELSE 0 END) as MD_SUM,
+            SUM(CASE WHEN HOUR BETWEEN 15 AND 17 THEN VOLUME ELSE 0 END) as PM_SUM,
+            SUM(CASE WHEN HOUR >= 18 OR HOUR <= 5 THEN VOLUME ELSE 0 END) as EV_SUM,
+            SUM(VOLUME) as DAILY_SUM
+        FROM `wfrc-modeling-data.src_udot_continuous_count_2023.data`
+        WHERE
+            DATE_ONLY BETWEEN '2023-09-01' AND '2023-11-15'
+            AND EXTRACT(DAYOFWEEK FROM DATE_ONLY) IN (3, 4, 5)
+            -- FILTER: Only include stations found in our local GeoDataFrame
+            -- AND STATION IN ({{sql_station_list}})
+        GROUP BY
+            STATION, DATE_ONLY
+    )
+    GROUP BY
+        STATION
+    ORDER BY
+        STATION
+"""
+
+# Load Linked Trips data from UDOT's 023 Continuos Counter Station Data
+df_ccs_2023 = client.query(query).to_dataframe()
+
+df_ccs_2023
+```
+
+```{python}
+# # Load Linked Trips data from UDOT's 023 Continuos Counter Station Data
+# df_ccs_2023 = client.query(
+#     "SELECT * FROM `wfrc-modeling-data.src_udot_continuous_count_2023.data`"
+# ).to_dataframe()
+
+# df_ccs_2023
+```
+
+```{python}
+df_ccs_2023["STATION"].nunique()
+```
+
+```{python}
+print(
+    {
+        "Location Only": len(
+            set(gdf_ccs_locations["STATION"]) - set(df_ccs_2023["STATION"])
+        ),
+        "Both": len(set(gdf_ccs_locations["STATION"]) & set(df_ccs_2023["STATION"])),
+        "Count Only": len(
+            set(df_ccs_2023["STATION"]) - set(gdf_ccs_locations["STATION"])
+        ),
+    }
+)
+```
+
 ```{python}
 # View the stations that have no count data in 2023
 gdf_ccs_locations[
@@ -269,35 +326,59 @@ gdf_ccs_locations[
 ].explore()
 ```
 
-## Modeled Traffic Volumes
+```{python}
+# Check the number of stations where sum of periodic volume is not equal to daily volume
+(
+    df_ccs_2023[["AVG_AM_VOL", "AVG_MD_VOL", "AVG_PM_VOL", "AVG_EV_VOL"]].sum(axis=1)
+    != df_ccs_2023["AVG_DY_VOL"]
+).sum()
+```
 
 ```{python}
-df_model_volume = pd.read_csv(
+# Total volume difference across all stations
+(
+    df_ccs_2023["AVG_AM_VOL"].sum()
+    + df_ccs_2023["AVG_MD_VOL"].sum()
+    + df_ccs_2023["AVG_PM_VOL"].sum()
+    + df_ccs_2023["AVG_EV_VOL"].sum()
+) - df_ccs_2023["AVG_DY_VOL"].sum()
+```
+
+## Modeled Traffic Volumes
+
+Source: `WF-TDM-Development\Scenarios\v1000-calib\BY_2023\5_AssignHwy\4_Summaries`
+
+```{python}
+df_segid_summary = pd.read_csv(
     Path("_data/raw/Summary_SEGID.csv")
 )
 
-df_model_volume
+df_segid_summary["SEGID"].nunique()
+```
+
+```{python}
+df_segid_detail = pd.read_csv(Path("_data/raw/Summary_SEGID_Detailed.csv"))
+
+df_segid_detail["SEGID"].nunique()
 ```
 
 ## Model Network
 
 Here we filter out links that has `SEGID` corresponding to modeled volume data.
 
-```{python}
-# 1. Get the list of unique SEGIDs from your model volume dataframe
-# We filter out any NAs just to be safe
-valid_segids = df_model_volume['SEGID'].dropna().unique().tolist()
+Network SHP Source: `WF-TDM-Official-Releases\1_Inputs\3_Highway\GIS`
+Segment SHP Source: `WF-TDM-Official-Releases\1_Inputs\6_Segment`
 
-# 2. Create the SQL query
-# We force conversion to string using str(x), then use repr() to wrap it in quotes.
-# Example: 0006_152.6 -> '0006_152.6' (with quotes for SQL)
-segid_str = ', '.join(map(lambda x: repr(str(x)), valid_segids))
+```{python}
+# 1. Get the list of unique SEGIDs and reate the SQL query
+valid_segids = df_segid_summary["SEGID"].dropna().unique().tolist()
+segid_str = ", ".join(map(lambda x: repr(str(x)), valid_segids))
 
 # 3. Load the network
 gdf_network_v10 = gpd.read_file(
-    Path("_data/raw/WFv1000_MasterNet/WFv1000_MasterNet_20250821 - Link.shp"),
+    Path("_data/raw/MasterNet/WFv1000_MasterNet_20250821 - Link.shp"),
     where=f"SEGID IN ({segid_str})",
-    engine="pyogrio"
+    engine="pyogrio",
 ).to_crs(CRS_UTM)
 
 len(gdf_network_v10)
@@ -306,7 +387,7 @@ len(gdf_network_v10)
 Verify if the number of unique ID in traffic volume data and network data are the same.
 
 ```{python}
-gdf_network_v10['SEGID'].nunique() == df_model_volume['SEGID'].nunique()
+gdf_network_v10['SEGID'].nunique() == df_segid_summary['SEGID'].nunique()
 ```
 
 Additionally, let's confirm that multiple links have same `SEGID`.
@@ -317,7 +398,29 @@ counts = gdf_network_v10['SEGID'].value_counts()
 print(counts.head(10))
 
 # To see the average number of links per segment:
-print(f"Average links per SEGID: {len(gdf_network_v10) / df_model_volume['SEGID'].nunique():.2f}")
+print(f"Average links per SEGID: {len(gdf_network_v10) / df_segid_summary['SEGID'].nunique():.2f}")
+```
+
+## Model Segments
+
+```{python}
+# 1. Get the list of unique SEGIDs and reate the SQL query
+valid_segids = df_segid_summary["SEGID"].dropna().unique().tolist()
+segid_str = ", ".join(map(lambda x: repr(str(x)), valid_segids))
+
+# 3. Load the segments
+gdf_segments_v10 = gpd.read_file(
+    Path("_data/raw/Segments/WFv910_Segments.shp"),
+    where=f"SEGID IN ({segid_str})",
+    engine="pyogrio",
+).to_crs(CRS_UTM)
+
+len(gdf_segments_v10)
+```
+
+```{python}
+# One less SEGID in segmets shapefile
+gdf_segments_v10["SEGID"].nunique() == df_segid_summary["SEGID"].nunique()
 ```
 
 # Data Cleaning
@@ -339,7 +442,7 @@ gdf_traffic_counts
 gdf_network_dissolved = (
     # 1. Prepare Network Data for Dissolve
     # We keep SEGID (key), geometry (for map), and STREET (for tooltips/validation)
-    # Most other attributes (FT, CO_FIPS, Volumes) are already in df_model_volume
+    # Most other attributes (FT, CO_FIPS, Volumes) are already in df_segid_summary
     gdf_network_v10[['SEGID', 'STREET', 'geometry']].copy()
     # 2. Dissolve geometries by SEGID
     # This aggregates the multiple links per segment into a single MultiLineString
@@ -353,7 +456,7 @@ gdf_network_dissolved = (
 # 3. Merge with Modeled Volume Data
 # We merge 'inner' to ensure we have both geometry and model data for all rows
 gdf_model_segments = gdf_network_dissolved.merge(
-    df_model_volume,
+    df_segid_summary,
     on='SEGID',
     how='inner'
 )
@@ -373,33 +476,37 @@ gdf_model_segments.explore()
 # through every station and find its single closest neighbor.
 gdf_ccs_mapped = gpd.sjoin_nearest(
     gdf_ccs_locations,
-    gdf_model_segments[['SEGID', 'STREET', 'geometry']], # Only keep keys/geometry to keep it clean
-    how="left",          # Keep all stations
-    distance_col="distance_meters" # Optional: records the distance to the match
+    gdf_model_segments[
+        ["SEGID", "STREET", "geometry"]
+    ],  # Only keep keys/geometry to keep it clean
+    how="left",  # Keep all stations
+    distance_col="distance_meters",  # records the distance in meters
 )
 
 # 2. Quality Control (Optional but Recommended)
 # View the results sorted by distance (Descending)
 # This puts the most "suspicious" matches (furthest away) at the top
 gdf_ccs_mapped.sort_values("distance_meters", ascending=False)[
-    ['STATION', 'SEGID', 'STREET', 'distance_meters']
+    ["STATION", "SEGID", "STREET", "distance_meters"]
 ]
 ```
 
 ```{python}
 # Merge model links with station geometry
 gdf_links_with_dist = gdf_model_segments.merge(
-    gdf_ccs_locations[['SEGID', 'geometry']],
-    on='SEGID',
-    how='left',
-    suffixes=('', '_station')
+    gdf_ccs_locations[["SEGID", "geometry"]],
+    on="SEGID",
+    how="left",
+    suffixes=("", "_station"),
 )
 
 # Calculate distance between link geometry and station geometry
-gdf_links_with_dist['distance_meters'] = gdf_links_with_dist.geometry.distance(
-    gpd.GeoSeries(gdf_links_with_dist['geometry_station'], crs=CRS_UTM)
+gdf_links_with_dist["distance_meters"] = gdf_links_with_dist.geometry.distance(
+    gpd.GeoSeries(gdf_links_with_dist["geometry_station"], crs=CRS_UTM)
 )
 
 # Clean up (Optional: remove the extra geometry column if you want)
-gdf_links_with_dist.drop(columns=['geometry_station'], inplace=True)
+gdf_links_with_dist.drop(columns=["geometry_station"], inplace=True)
 ```
+
+By Period, Direction, and Functional Class
