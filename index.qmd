@@ -306,9 +306,10 @@ df_ccs_2023 = client.query(query).to_dataframe()
 df_ccs_2023
 ```
 
-Find Route and Begin Mile Post from SEGID (RRRR_PPP.P) in Model data (Model Network and Volumes), use Route to join and take Milepost equal or less than that of the CCS Station.
-
 ```{python}
+#| eval: false
+#| include: false
+
 # # Load Linked Trips data from UDOT's 023 Continuos Counter Station Data
 # df_ccs_2023 = client.query(
 #     "SELECT * FROM `wfrc-modeling-data.src_udot_continuous_count_2023.data`"
@@ -318,10 +319,16 @@ Find Route and Begin Mile Post from SEGID (RRRR_PPP.P) in Model data (Model Netw
 ```
 
 ```{python}
+#| eval: false
+#| include: false
+
 df_ccs_2023["STATION"].nunique()
 ```
 
 ```{python}
+#| eval: false
+#| include: false
+
 print(
     {
         "Location Only": len(
@@ -336,6 +343,9 @@ print(
 ```
 
 ```{python}
+#| eval: false
+#| include: false
+
 # View the stations that have no count data in 2023
 gdf_ccs_locations[
     ~gdf_ccs_locations["STATION"].isin(df_ccs_2023["STATION"].unique())
@@ -343,6 +353,9 @@ gdf_ccs_locations[
 ```
 
 ```{python}
+#| eval: false
+#| include: false
+
 # Check the number of stations where sum of periodic volume is not equal to daily volume
 (
     df_ccs_2023[["AVG_AM_VOL", "AVG_MD_VOL", "AVG_PM_VOL", "AVG_EV_VOL"]].sum(axis=1)
@@ -351,6 +364,9 @@ gdf_ccs_locations[
 ```
 
 ```{python}
+#| eval: false
+#| include: false
+
 # Total volume difference across all stations
 (
     df_ccs_2023["AVG_AM_VOL"].sum()
@@ -362,15 +378,7 @@ gdf_ccs_locations[
 
 ## Modeled Traffic Volumes
 
-Source: `WF-TDM-Development\Scenarios\v1000-calib\BY_2023\5_AssignHwy\4_Summaries`
-
-```{python}
-df_segid_summary = pd.read_csv(
-    Path("_data/raw/Summary_SEGID.csv")
-)
-
-df_segid_summary["SEGID"].nunique()
-```
+Source: `WF-TDM-Development\Scenarios\v1000-calib\BY_2023\5_AssignHwy\4_Summaries\Summary_SEGID_Detailed.csv`
 
 ```{python}
 df_segid_detail = pd.read_csv(Path("_data/raw/Summary_SEGID_Detailed.csv"))
@@ -378,50 +386,15 @@ df_segid_detail = pd.read_csv(Path("_data/raw/Summary_SEGID_Detailed.csv"))
 df_segid_detail["SEGID"].nunique()
 ```
 
-## Model Network
+## Model Segments
 
 Here we filter out links that has `SEGID` corresponding to modeled volume data.
 
-Network SHP Source: `WF-TDM-Official-Releases\1_Inputs\3_Highway\GIS`
 Segment SHP Source: `WF-TDM-Official-Releases\1_Inputs\6_Segment`
 
 ```{python}
 # 1. Get the list of unique SEGIDs and reate the SQL query
-valid_segids = df_segid_summary["SEGID"].dropna().unique().tolist()
-segid_str = ", ".join(map(lambda x: repr(str(x)), valid_segids))
-
-# 3. Load the network
-gdf_network_v10 = gpd.read_file(
-    Path("_data/raw/MasterNet/WFv1000_MasterNet_20250821 - Link.shp"),
-    where=f"SEGID IN ({segid_str})",
-    engine="pyogrio",
-).to_crs(CRS_UTM)
-
-len(gdf_network_v10)
-```
-
-Verify if the number of unique ID in traffic volume data and network data are the same.
-
-```{python}
-gdf_network_v10['SEGID'].nunique() == df_segid_summary['SEGID'].nunique()
-```
-
-Additionally, let's confirm that multiple links have same `SEGID`.
-
-```{python}
-# This will show you which SEGIDs have the most geographic pieces
-counts = gdf_network_v10['SEGID'].value_counts()
-print(counts.head(10))
-
-# To see the average number of links per segment:
-print(f"Average links per SEGID: {len(gdf_network_v10) / df_segid_summary['SEGID'].nunique():.2f}")
-```
-
-## Model Segments
-
-```{python}
-# 1. Get the list of unique SEGIDs and reate the SQL query
-valid_segids = df_segid_summary["SEGID"].dropna().unique().tolist()
+valid_segids = df_segid_detail["SEGID"].dropna().unique().tolist()
 segid_str = ", ".join(map(lambda x: repr(str(x)), valid_segids))
 
 # 3. Load the segments
@@ -436,158 +409,114 @@ len(gdf_segments_v10)
 
 ```{python}
 # One less SEGID in segmets shapefile
-gdf_segments_v10["SEGID"].nunique() == df_segid_summary["SEGID"].nunique()
+gdf_segments_v10["SEGID"].nunique() == df_segid_detail["SEGID"].nunique()
 ```
 
 # Data Cleaning
 
-## Merge Traffic Counts and Station
+## Prepare CCS Data
 
 ```{python}
-gdf_traffic_counts = gdf_ccs_locations.merge(df_ccs_2023, on="STATION", how="inner")
-gdf_traffic_counts.explore()
-```
-
-## Merge Segment Volume and Model Network
-
-```{python}
-gdf_network_dissolved = (
-    # 1. Prepare Network Data for Dissolve
-    # We keep SEGID (key), geometry (for map), and STREET (for tooltips/validation)
-    # Most other attributes (FT, CO_FIPS, Volumes) are already in df_segid_summary
-    gdf_network_v10[['SEGID', 'STREET', 'geometry']].copy()
-    # 2. Dissolve geometries by SEGID
-    # This aggregates the multiple links per segment into a single MultiLineString
-    .dissolve(
-        by='SEGID',
-        aggfunc={'STREET': 'first'}, # Keep the first street name found
-        as_index=False
-    )
+gdf_obs_counts = gdf_ccs_locations.merge(
+    df_ccs_2023, on="STATION", how="inner"
 )
 
-# 3. Merge with Modeled Volume Data
-# We merge 'inner' to ensure we have both geometry and model data for all rows
-gdf_model_segments = gdf_network_dissolved.merge(
-    df_segid_summary,
-    on='SEGID',
-    how='inner'
-)
-
-gdf_model_segments
+gdf_obs_counts.explore()
 ```
 
-```{python}
-gdf_model_segments.explore(
-    column="DY_VMT",
-    scheme="NaturalBreaks",  # Divides data into 5 natural clusters
-    k=5,
-    cmap="RdYlGn_r",
-    tiles="CartoDB voyager",
-    style_kwds={"weight": 2.5},  # Base weight
-)
-```
+## Prepare Model Data
 
-## Merge Segment Volume and Model Segments
+### Filter for Aggregate Totals
 
 ```{python}
-gdf_segment_volume = gdf_segments_v10[["SEGID", "SUBAREAID", "geometry"]].merge(
-    df_segid_summary,
-    on=["SEGID", "SUBAREAID"],
-    # on=["SEGID", "DISTANCE", "DIRECTION", "CO_FIPS", "SUBAREAID"],
-    how="inner",
-)
-```
-
-```{python}
-gdf_segment_volume.explore(
-    column="DY_VMT",
-    scheme="NaturalBreaks",  # Divides data into 5 natural clusters
-    k=5,
-    cmap="RdYlGn_r",
-    tiles="CartoDB voyager",
-    style_kwds={"weight": 2.5},  # Base weight
-)
-```
-
-# Spatial Operations
-
-## Model Network
-
-
-```{python}
-# | label: prep-validation-data
-# | echo: true
-# | warning: false
-
-# --- 1. Prepare Model Data (The "Total" Volume View) ---
-# Filter for 'Total' (All Lanes) and 'Both' (Bi-Directional)
+# We use 'FUNCGROUP' = 'Total' (All Lanes) and 'DIRECTION' = 'Both' (Bi-Directional)
 df_model_clean = df_segid_detail[
     (df_segid_detail['FUNCGROUP'] == 'Total') &
     (df_segid_detail['DIRECTION'] == 'Both')
 ].copy()
+```
 
-# Robust Route Extraction (Handle 'MAG', 'WFRC' prefixes by coercing to NaN)
+### Parse SEGID for Route and Milepost (Format: XXXX_YYY.Y)
+
+```{python}
+# We handle non-numeric prefixes (like 'MAG' or 'WFRC') by coercing to NaN
 temp_route = df_model_clean['SEGID'].str.split('_').str[0]
-df_model_clean['MODEL_ROUTE'] = pd.to_numeric(temp_route, errors='coerce')
+df_model_clean.loc[:, 'MODEL_ROUTE'] = pd.to_numeric(
+    temp_route, errors='coerce')
 
-# Drop invalid routes and cast to Integer
-df_model_clean = df_model_clean.dropna(subset=['MODEL_ROUTE'])
+# Drop invalid routes and cast to Integer for robust matching
+df_model_clean = df_model_clean.dropna(subset=['MODEL_ROUTE']).copy()
 df_model_clean['MODEL_ROUTE'] = df_model_clean['MODEL_ROUTE'].astype(int)
 
 # Extract Milepost
 df_model_clean['MODEL_MP'] = df_model_clean['SEGID'].str.split(
     '_').str[1].astype(float)
+```
 
-# Select columns - NOW INCLUDING CO_FIPS (County)
-cols = ['SEGID', 'MODEL_ROUTE', 'MODEL_MP', 'FTCLASS', 'ATYPENAME', 'CO_FIPS',
-        'AM_Vol', 'MD_Vol', 'PM_Vol', 'EV_Vol', 'DY_Vol']
-df_model_final = df_model_clean[cols].reset_index(drop=True)
+### Join with Segment Geometry
 
-# Map FIPS to County Names for readability (Standard Utah WFRC/MAG codes)
-fips_map = {3: 'Box Elder', 11: 'Davis',
-            35: 'Salt Lake', 49: 'Utah', 57: 'Weber'}
-df_model_final['COUNTY_NAME'] = df_model_final['CO_FIPS'].map(
+```{python}
+# We merge the prepared volumes with the clean gdf_segments geometry
+gdf_model_final = gdf_segments_v10.merge(
+    df_model_clean[['SEGID', 'MODEL_ROUTE', 'MODEL_MP', 'FTCLASS', 'ATYPENAME',
+                    'AM_Vol', 'MD_Vol', 'PM_Vol', 'EV_Vol', 'DY_Vol']],
+    on='SEGID',
+    how='inner'
+)
+```
+
+### Add County Name using CO_FIPS
+
+```{python}
+fips_map = {
+    3: 'Box Elder',
+    11: 'Davis',
+    35: 'Salt Lake',
+    49: 'Utah',
+    57: 'Weber'
+}
+
+gdf_model_final['COUNTY_NM'] = gdf_model_final['CO_FIPS'].map(
     fips_map).fillna('Other')
+```
 
-# --- 2. Prepare CCS Data ---
-gdf_ccs_process = gdf_ccs_locations.copy()
+# Spatial Operations
 
-# Clean Route (Force to Integer)
-gdf_ccs_process['CCS_ROUTE'] = pd.to_numeric(
-    gdf_ccs_process['ROUTE'], errors='coerce')
-gdf_ccs_process = gdf_ccs_process.dropna(subset=['CCS_ROUTE'])
-gdf_ccs_process['CCS_ROUTE'] = gdf_ccs_process['CCS_ROUTE'].astype(int)
+## Link Route & Milepost
 
-# --- 3. Iterative Matching Logic (Route + MP) ---
+```{python}
+# | label: link-stations
+# | echo: true
+
 match_results = []
 
-for idx, ccs_row in gdf_ccs_process.iterrows():
+for idx, ccs_row in gdf_obs_counts.iterrows():
     station_id = ccs_row['STATION']
-    target_route = ccs_row['CCS_ROUTE']
+    target_route = ccs_row['ROUTE']
     target_mp = ccs_row['MP']
 
-    # Filter Model Data to same Route
-    route_segments = df_model_final[df_model_final['MODEL_ROUTE']
-                                    == target_route]
+    # Filter Model Data to the specific Route
+    route_segments = gdf_model_final[gdf_model_final['MODEL_ROUTE']
+                                     == target_route]
 
     matched_segid = None
     match_type = "No Match"
 
     if not route_segments.empty:
-        # Priority A: Predecessor (Segment Starts Before Station)
+        # Priority A: Predecessor (Segment BMP <= Station MP)
         predecessors = route_segments[route_segments['MODEL_MP'] <= target_mp]
 
         if not predecessors.empty:
-            # Pick the closest one (Max MP)
+            # Pick the closest one (Max BMP)
             best_match = predecessors.loc[predecessors['MODEL_MP'].idxmax()]
             matched_segid = best_match['SEGID']
             match_type = "Predecessor (<=)"
         else:
-            # Priority B: Successor (Segment Starts After Station)
+            # Priority B: Successor (Segment BMP > Station MP)
             successors = route_segments[route_segments['MODEL_MP'] > target_mp]
 
             if not successors.empty:
-                # Pick the closest one (Min MP)
+                # Pick the closest one (Min BMP)
                 best_match = successors.loc[successors['MODEL_MP'].idxmin()]
                 matched_segid = best_match['SEGID']
                 match_type = "Successor (>)"
@@ -599,77 +528,78 @@ for idx, ccs_row in gdf_ccs_process.iterrows():
     })
 
 df_matches = pd.DataFrame(match_results)
+print(df_matches['MATCH_TYPE'].value_counts())
+```
 
-# --- 4. Final Merge (Create Master Validation Table) ---
-# A. Join Matches to Observed Counts (Inner Join)
+## Create Master Validation Table
+
+
+```{python}
+# | label: create-master
+# | echo: true
+
+# 1. Join Matches to Observed Counts (Inner Join filters to valid stations only)
 df_validation = df_matches.merge(df_ccs_2023, on='STATION', how='inner')
 
-# B. Join to Model Attributes (Using the Matched SEGID)
-# We pull FTCLASS, ATYPENAME, and COUNTY from here
+# 2. Join to Model Attributes using the Matched SEGID
 df_validation = df_validation.merge(
-    df_model_final[['SEGID', 'FTCLASS', 'ATYPENAME', 'COUNTY_NAME',
-                    'AM_Vol', 'MD_Vol', 'PM_Vol', 'EV_Vol', 'DY_Vol']],
+    gdf_model_final[['SEGID', 'FTCLASS', 'ATYPENAME', 'COUNTY_NM',
+                     'AM_Vol', 'MD_Vol', 'PM_Vol', 'EV_Vol', 'DY_Vol']],
     left_on='MATCHED_SEGID',
     right_on='SEGID',
     how='left'
 )
 
-# Calculate Daily Diff for quick check
+# 3. Calculate Differences
 df_validation['DIFF_DY'] = df_validation['DY_Vol'] - \
     df_validation['AVG_DY_VOL']
+df_validation['PCT_DIFF_DY'] = (
+    df_validation['DIFF_DY'] / df_validation['AVG_DY_VOL']).round(3)
 
-# --- 5. Export to OJS ---
-# We convert to a list of dictionaries for easy consumption in JavaScript
-ojs_data = df_validation.to_dict(orient='records')
+# Display sample
+df_validation[['STATION', 'MATCHED_SEGID', 'FTCLASS',
+               'AVG_DY_VOL', 'DY_Vol', 'PCT_DIFF_DY']].head()
 ```
 
+## Interactive Dashboard
+
 ```{python}
-# | label: transfer-to-ojs
+# | label: transfer-ojs
 # | echo: false
 
-from IPython.display import display, HTML
-import json
-
-# Standard Quarto way to pass data to OJS
-print("Transferring data to OJS...")
-# ojs_define is a Quarto-specific function available in .qmd files
-ojs_define(data_py=ojs_data)
+# Transfer the clean dataframe to OJS
+ojs_define(data_py=df_validation.to_dict(orient='records'))
 ```
 
 ```{ojs}
 //| label: ojs-dashboard
 //| echo: false
 
-// 1. Import libraries
+// Import visualization libraries
 import { aq, op } from '@uwdata/arquero'
 import { Plot } from '@observablehq/plot'
 
-// 2. Create the Dropdown Input
+// 1. Controls
 viewof group_var = Inputs.select(
-  ["FTCLASS", "ATYPENAME", "COUNTY_NAME"],
-  {label: "Group Validation By:", value: "FTCLASS"}
+  ["FTCLASS", "ATYPENAME", "COUNTY_NM"],
+  {label: "Group By:", value: "FTCLASS"}
 )
 
-// 3. Process Data (Arquero is great for this in browser)
-// We pivot the data to sum Observed and Modeled volumes by the selected group
+// 2. Data Processing (Arquero)
 summary_data = {
-  // Convert Python data to Arquero Table
   let dt = aq.from(data_py)
-    .filter(d => d[group_var] != null) // Remove unmatched rows
+    .filter(d => d[group_var] != null) // Remove Unmatched
     .groupby(group_var)
     .rollup({
       Stations: op.count(),
       Obs_Daily: op.sum('AVG_DY_VOL'),
       Mod_Daily: op.sum('DY_Vol'),
       Obs_AM: op.sum('AVG_AM_VOL'),
-      Mod_AM: op.sum('AM_Vol'),
-      Obs_PM: op.sum('AVG_PM_VOL'),
-      Mod_PM: op.sum('PM_Vol')
+      Mod_AM: op.sum('AM_Vol')
     })
     .derive({
       Diff_Daily: d => d.Mod_Daily - d.Obs_Daily,
       Pct_Diff_Daily: d => (d.Mod_Daily - d.Obs_Daily) / d.Obs_Daily,
-      // Create a clean label for the plot
       Group: d => d[group_var]
     })
     .orderby(group_var)
@@ -677,42 +607,22 @@ summary_data = {
   return dt
 }
 
-// 4. Render the Summary Table
-Inputs.table(summary_data, {
-  columns: [
-    group_var, "Stations",
-    "Obs_Daily", "Mod_Daily", "Diff_Daily", "Pct_Diff_Daily"
-  ],
-  header: {
-    [group_var]: "Category",
-    Obs_Daily: "Observed (Daily)",
-    Mod_Daily: "Modeled (Daily)",
-    Diff_Daily: "Difference",
-    Pct_Diff_Daily: "% Difference"
-  },
-  format: {
-    Obs_Daily: d => d.toLocaleString(),
-    Mod_Daily: d => d.toLocaleString(),
-    Diff_Daily: d => d.toLocaleString(),
-    Pct_Diff_Daily: d => (d * 100).toFixed(1) + "%"
-  }
-})
-
-// 5. Render Interactive Plot (Modeled vs Observed)
+// 3. Visualization
 Plot.plot({
   title: `Modeled vs Observed Volume by ${group_var}`,
   marginLeft: 150,
+  height: 400,
   marks: [
     Plot.barX(summary_data, {
       x: "Obs_Daily",
       y: "Group",
-      fill: "#e0e0e0", // Light gray for Observed
+      fill: "#e0e0e0",
       title: "Observed"
     }),
     Plot.tickX(summary_data, {
       x: "Mod_Daily",
       y: "Group",
-      stroke: d => d.Mod_Daily > d.Obs_Daily ? "red" : "blue", // Red if over-modeled
+      stroke: d => d.Mod_Daily > d.Obs_Daily ? "#d32f2f" : "#1976d2", // Red/Blue
       strokeWidth: 3,
       title: "Modeled"
     }),
@@ -724,8 +634,29 @@ Plot.plot({
       textAnchor: "start"
     })
   ],
-  x: { label: "Daily Traffic Volume" },
+  x: { label: "Daily Traffic Volume", grid: true },
   y: { label: "" },
   color: { legend: true }
+})
+
+// 4. Data Table
+Inputs.table(summary_data, {
+  columns: [
+    group_var, "Stations",
+    "Obs_Daily", "Mod_Daily", "Diff_Daily", "Pct_Diff_Daily"
+  ],
+  header: {
+    [group_var]: "Category",
+    Obs_Daily: "Observed (Daily)",
+    Mod_Daily: "Modeled (Daily)",
+    Diff_Daily: "Difference",
+    Pct_Diff_Daily: "% Diff"
+  },
+  format: {
+    Obs_Daily: d => d.toLocaleString(),
+    Mod_Daily: d => d.toLocaleString(),
+    Diff_Daily: d => d.toLocaleString(),
+    Pct_Diff_Daily: d => (d * 100).toFixed(1) + "%"
+  }
 })
 ```
