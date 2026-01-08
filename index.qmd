@@ -466,18 +466,13 @@ gdf_model_final = gdf_segments[['SEGID', 'SUTRK2022', 'CUTRK2022', 'CO_FIPS', 'g
 ### Add County Name using CO_FIPS
 
 ```{python}
-fips_map = {
-    3: 'Box Elder',
-    11: 'Davis',
-    35: 'Salt Lake',
-    49: 'Utah',
-    57: 'Weber'
-}
+fips_map = {3: "Box Elder", 11: "Davis", 35: "Salt Lake", 49: "Utah", 57: "Weber"}
 
-gdf_model_final['COUNTY_NAME'] = gdf_model_final['CO_FIPS'].map(
-    fips_map).fillna('Other')
+gdf_model_final["COUNTY_NAME"] = (
+    gdf_model_final["CO_FIPS"].map(fips_map).fillna("Other")
+)
 
-gdf_model_final['COUNTY_NAME']
+gdf_model_final["COUNTY_NAME"].value_counts()
 ```
 
 # Spatial Operations
@@ -494,9 +489,9 @@ used_segids = set()
 # --- PASS 1: High-Confidence Route & MP Matching ---
 print("Starting Pass 1: Route & Milepost Matching...")
 
-for idx, ccs_row in gdf_ccs_process.iterrows():
+for idx, ccs_row in gdf_obs_counts.iterrows():
     station_id = ccs_row["STATION"]
-    target_route = ccs_row["CCS_ROUTE"]
+    target_route = ccs_row["ROUTE"]
     target_mp = ccs_row["MP"]
 
     # Filter Model Data to the specific Route
@@ -711,5 +706,173 @@ df_final.to_csv("_output/dashboard_data.csv", index=False)
 # | echo: false
 
 # Transfer the clean dataframe to OJS
-ojs_define(data_py=df_validation.to_dict(orient='records'))
+# ojs_define(data_py=df_final)
+```
+
+```{ojs}
+//| label: ojs-dashboard
+//| echo: false
+
+// 1. IMPORT LIBRARIES
+import { aq, op } from '@uwdata/arquero'
+import { Plot } from '@observablehq/plot'
+
+// 2. LOAD DATA
+data_raw = FileAttachment("_output/dashboard_data.csv").csv({ typed: true })
+
+// 3. DASHBOARD CONTROLS
+viewof dashboard_ctrls = Inputs.form({
+  group_by: Inputs.select(
+    ["FTCLASS", "ATYPENAME", "COUNTY_NAME", "PERIOD", "VEHICLE_TYPE"],
+    {label: "📊 Color / Group By:", value: "FTCLASS"}
+  ),
+  filter_county: Inputs.select(
+    ["All"].concat(Array.from(new Set(data_raw.map(d => d.COUNTY_NAME))).sort()),
+    {label: "Filter County:", value: "All"}
+  ),
+  filter_atype: Inputs.select(
+    ["All"].concat(Array.from(new Set(data_raw.map(d => d.ATYPENAME))).sort()),
+    {label: "Filter Area Type:", value: "All"}
+  ),
+  filter_period: Inputs.select(
+    ["All", "AM", "MD", "PM", "EV"],
+    {label: "Filter Period:", value: "All"}
+  ),
+  filter_vehicle: Inputs.select(
+    ["All", "Auto", "SUT", "CUT"],
+    {label: "Filter Vehicle:", value: "All"}
+  )
+})
+
+// 4. DATA PROCESSING PIPELINE
+// We create a reactive object 'dash_data' that holds both datasets we need
+dash_data = {
+  const { group_by, filter_county, filter_atype, filter_period, filter_vehicle } = dashboard_ctrls;
+
+  // A. Base Filtered Data
+  // We pass the filter values as parameters ($) to avoid scope errors
+  let base = aq.from(data_raw)
+    .params({
+      fc: filter_county, fa: filter_atype, fp: filter_period, fv: filter_vehicle, gb: group_by
+    })
+    .filter((d, $) => $.fc === "All" || d.COUNTY_NAME === $.fc)
+    .filter((d, $) => $.fa === "All" || d.ATYPENAME === $.fa)
+    .filter((d, $) => $.fp === "All" || d.PERIOD === $.fp)
+    .filter((d, $) => $.fv === "All" || d.VEHICLE_TYPE === $.fv)
+
+  // B. Scatter Data (Station Level)
+  // Group by Station AND the "Group By" variable to keep the color dimension
+  let scatter = base
+    .groupby("STATION", group_by)
+    .rollup({
+      Obs_Total: op.sum('OBSERVED'),
+      Mod_Total: op.sum('MODELED')
+    })
+    .derive({
+      Label: (d, $) => d[$.gb], // Dynamic label for coloring
+      Max_Vol: d => Math.max(d.Obs_Total, d.Mod_Total) // For scaling
+    })
+
+  // C. Bar/Table Data (Aggregate Level)
+  // Group purely by the "Group By" variable
+  let summary = base
+    .groupby(group_by)
+    .rollup({
+      Stations: op.count(),
+      Obs_Total: op.sum('OBSERVED'),
+      Mod_Total: op.sum('MODELED')
+    })
+    .derive({
+      Diff: d => d.Mod_Total - d.Obs_Total,
+      Pct_Diff: d => (d.Mod_Total - d.Obs_Total) / d.Obs_Total,
+      Label: (d, $) => d[$.gb]
+    })
+    .orderby(group_by)
+
+  return { scatter, summary }
+}
+
+// 5. PLOT PREPARATION
+// Calculate max value for the reference line (y=x)
+max_val = dash_data.scatter.rollup({ max: op.max("Max_Vol") }).get("max")
+
+// Fold the summary data to "Long" format for the Grouped Bar Chart
+bar_plot_data = dash_data.summary.fold(["Obs_Total", "Mod_Total"], { as: ["Metric", "Volume"] })
+    .derive({ Metric_Label: d => d.Metric === "Obs_Total" ? "Observed" : "Modeled" })
+
+// 6. VISUALIZATION LAYOUT
+
+md`### 1. Station Scatter Plot`
+md`Each dot represents a station. Points above the diagonal line are over-predicted; points below are under-predicted.`
+
+Plot.plot({
+  height: 500,
+  grid: true,
+  aspectRatio: 1,
+  x: { label: "Observed Volume", tickFormat: "s", domain: [0, max_val] },
+  y: { label: "Modeled Volume", tickFormat: "s", domain: [0, max_val] },
+  color: { legend: true, label: dashboard_ctrls.group_by },
+  marks: [
+    // Reference Line (y=x)
+    Plot.line([[0, 0], [max_val, max_val]], { stroke: "#ccc", strokeDasharray: "4" }),
+
+    // Scatter Dots
+    Plot.dot(dash_data.scatter, {
+      x: "Obs_Total",
+      y: "Mod_Total",
+      fill: "Label",
+      stroke: "white",
+      strokeWidth: 1,
+      opacity: 0.8,
+      r: 4,
+      title: d => `Station: ${d.STATION}\n${dashboard_ctrls.group_by}: ${d.Label}\nObs: ${d.Obs_Total.toLocaleString()}\nMod: ${d.Mod_Total.toLocaleString()}`
+    })
+  ]
+})
+
+md`### 2. Aggregate Comparison`
+md`Comparison of total volumes by category.`
+
+Plot.plot({
+  marginLeft: 150,
+  height: Math.max(300, dash_data.summary.numRows() * 50), // Auto-resize height
+  color: { domain: ["Observed", "Modeled"], range: ["#bababa", "#1976d2"] },
+  x: { label: "Total Volume", grid: true, tickFormat: "s" },
+  y: { axis: null },
+  fy: { label: null, axis: "left" }, // Facet Y acts as our categorical axis
+  marks: [
+    Plot.barX(bar_plot_data, {
+      x: "Volume",
+      y: "Metric_Label", // Stacks the two bars side-by-side
+      fy: "Label",       // Groups them by category
+      fill: "Metric_Label",
+      title: d => `${d.Metric_Label}: ${d.Volume.toLocaleString()}`,
+      sort: { fy: "x", reduce: "max", order: "descending" }
+    }),
+    Plot.text(bar_plot_data, {
+      x: "Volume", y: "Metric_Label", fy: "Label",
+      text: d => d.Volume.toLocaleString(),
+      dx: 5, textAnchor: "start", fill: "#666", fontSize: 10
+    })
+  ]
+})
+
+md`### 3. Statistics Table`
+
+Inputs.table(dash_data.summary, {
+  columns: ["Label", "Stations", "Obs_Total", "Mod_Total", "Diff", "Pct_Diff"],
+  header: {
+    Label: dashboard_ctrls.group_by,
+    Obs_Total: "Observed",
+    Mod_Total: "Modeled",
+    Diff: "Diff",
+    Pct_Diff: "% Error"
+  },
+  format: {
+    Obs_Total: d => d.toLocaleString(),
+    Mod_Total: d => d.toLocaleString(),
+    Diff: d => d.toLocaleString(),
+    Pct_Diff: d => (d * 100).toFixed(1) + "%"
+  }
+})
 ```
