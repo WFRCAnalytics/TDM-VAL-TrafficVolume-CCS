@@ -1,6 +1,6 @@
 ---
-title: Observed vs Modeled Volume
-subtitle: Validating the Modeled Traffic Volume
+title: Traffic Assignment Validation
+subtitle: Validating the Obsvered vs Modeled Traffic Volume
 description: This notebook is used to validate the traffic volume assigned by the Travel Demand Model against the observed traffic volume data captured by the Continuous Counting Stations (CCS).
 author:
  - name: Pukar Bhandari
@@ -11,7 +11,19 @@ author:
 date: "2025-12-24"
 ---
 
+## Overview
+
+This document validates the Travel Demand Model's traffic assignment by comparing modeled volumes against observed counts from Continuous Count Stations (CCS).
+
+The validation process involves:
+1. **Data Preparation:** Aggregating modeled directional flows into bi-directional segment totals.
+2. **Spatial Linking:** Matching CCS stations to Model Segments based on Route and Milepost.
+3. **Enrichment:** Attributing matches with Functional Class, Area Type, and County.
+4. **Interactive Analysis:** Visualizing the differences using OJS.
+
 ## Environment Setup
+
+We begin by importing the necessary Python libraries for geospatial data handling and setting up the helper functions.
 
 ### Import Standard Libraries
 
@@ -24,6 +36,7 @@ import geopandas as gpd
 # For Visualization
 import matplotlib.pyplot as plt
 import seaborn as sns
+import mapclassify
 
 # misc
 import os
@@ -32,6 +45,7 @@ from pathlib import Path
 import importlib.util
 
 from dotenv import load_dotenv
+
 load_dotenv()
 ```
 
@@ -292,6 +306,8 @@ df_ccs_2023 = client.query(query).to_dataframe()
 df_ccs_2023
 ```
 
+Find Route and Begin Mile Post from SEGID (RRRR_PPP.P) in Model data (Model Network and Volumes), use Route to join and take Milepost equal or less than that of the CCS Station.
+
 ```{python}
 # # Load Linked Trips data from UDOT's 023 Continuos Counter Station Data
 # df_ccs_2023 = client.query(
@@ -428,15 +444,11 @@ gdf_segments_v10["SEGID"].nunique() == df_segid_summary["SEGID"].nunique()
 ## Merge Traffic Counts and Station
 
 ```{python}
-gdf_traffic_counts = gdf_ccs_locations.merge(
-    df_ccs_2023,
-    on="STATION",
-    how="inner"
-)
-gdf_traffic_counts
+gdf_traffic_counts = gdf_ccs_locations.merge(df_ccs_2023, on="STATION", how="inner")
+gdf_traffic_counts.explore()
 ```
 
-## Merge Modeled Volume and Network
+## Merge Segment Volume and Model Network
 
 ```{python}
 gdf_network_dissolved = (
@@ -465,48 +477,255 @@ gdf_model_segments
 ```
 
 ```{python}
-gdf_model_segments.explore()
+gdf_model_segments.explore(
+    column="DY_VMT",
+    scheme="NaturalBreaks",  # Divides data into 5 natural clusters
+    k=5,
+    cmap="RdYlGn_r",
+    tiles="CartoDB voyager",
+    style_kwds={"weight": 2.5},  # Base weight
+)
+```
+
+## Merge Segment Volume and Model Segments
+
+```{python}
+gdf_segment_volume = gdf_segments_v10[["SEGID", "SUBAREAID", "geometry"]].merge(
+    df_segid_summary,
+    on=["SEGID", "SUBAREAID"],
+    # on=["SEGID", "DISTANCE", "DIRECTION", "CO_FIPS", "SUBAREAID"],
+    how="inner",
+)
+```
+
+```{python}
+gdf_segment_volume.explore(
+    column="DY_VMT",
+    scheme="NaturalBreaks",  # Divides data into 5 natural clusters
+    k=5,
+    cmap="RdYlGn_r",
+    tiles="CartoDB voyager",
+    style_kwds={"weight": 2.5},  # Base weight
+)
 ```
 
 # Spatial Operations
 
+## Model Network
+
+
 ```{python}
-# 1. Find the nearest network link for each CCS Station
-# We use the CCS stations as the 'left' dataframe because we want to iterate
-# through every station and find its single closest neighbor.
-gdf_ccs_mapped = gpd.sjoin_nearest(
-    gdf_ccs_locations,
-    gdf_model_segments[
-        ["SEGID", "STREET", "geometry"]
-    ],  # Only keep keys/geometry to keep it clean
-    how="left",  # Keep all stations
-    distance_col="distance_meters",  # records the distance in meters
+# | label: prep-validation-data
+# | echo: true
+# | warning: false
+
+# --- 1. Prepare Model Data (The "Total" Volume View) ---
+# Filter for 'Total' (All Lanes) and 'Both' (Bi-Directional)
+df_model_clean = df_segid_detail[
+    (df_segid_detail['FUNCGROUP'] == 'Total') &
+    (df_segid_detail['DIRECTION'] == 'Both')
+].copy()
+
+# Robust Route Extraction (Handle 'MAG', 'WFRC' prefixes by coercing to NaN)
+temp_route = df_model_clean['SEGID'].str.split('_').str[0]
+df_model_clean['MODEL_ROUTE'] = pd.to_numeric(temp_route, errors='coerce')
+
+# Drop invalid routes and cast to Integer
+df_model_clean = df_model_clean.dropna(subset=['MODEL_ROUTE'])
+df_model_clean['MODEL_ROUTE'] = df_model_clean['MODEL_ROUTE'].astype(int)
+
+# Extract Milepost
+df_model_clean['MODEL_MP'] = df_model_clean['SEGID'].str.split(
+    '_').str[1].astype(float)
+
+# Select columns - NOW INCLUDING CO_FIPS (County)
+cols = ['SEGID', 'MODEL_ROUTE', 'MODEL_MP', 'FTCLASS', 'ATYPENAME', 'CO_FIPS',
+        'AM_Vol', 'MD_Vol', 'PM_Vol', 'EV_Vol', 'DY_Vol']
+df_model_final = df_model_clean[cols].reset_index(drop=True)
+
+# Map FIPS to County Names for readability (Standard Utah WFRC/MAG codes)
+fips_map = {3: 'Box Elder', 11: 'Davis',
+            35: 'Salt Lake', 49: 'Utah', 57: 'Weber'}
+df_model_final['COUNTY_NAME'] = df_model_final['CO_FIPS'].map(
+    fips_map).fillna('Other')
+
+# --- 2. Prepare CCS Data ---
+gdf_ccs_process = gdf_ccs_locations.copy()
+
+# Clean Route (Force to Integer)
+gdf_ccs_process['CCS_ROUTE'] = pd.to_numeric(
+    gdf_ccs_process['ROUTE'], errors='coerce')
+gdf_ccs_process = gdf_ccs_process.dropna(subset=['CCS_ROUTE'])
+gdf_ccs_process['CCS_ROUTE'] = gdf_ccs_process['CCS_ROUTE'].astype(int)
+
+# --- 3. Iterative Matching Logic (Route + MP) ---
+match_results = []
+
+for idx, ccs_row in gdf_ccs_process.iterrows():
+    station_id = ccs_row['STATION']
+    target_route = ccs_row['CCS_ROUTE']
+    target_mp = ccs_row['MP']
+
+    # Filter Model Data to same Route
+    route_segments = df_model_final[df_model_final['MODEL_ROUTE']
+                                    == target_route]
+
+    matched_segid = None
+    match_type = "No Match"
+
+    if not route_segments.empty:
+        # Priority A: Predecessor (Segment Starts Before Station)
+        predecessors = route_segments[route_segments['MODEL_MP'] <= target_mp]
+
+        if not predecessors.empty:
+            # Pick the closest one (Max MP)
+            best_match = predecessors.loc[predecessors['MODEL_MP'].idxmax()]
+            matched_segid = best_match['SEGID']
+            match_type = "Predecessor (<=)"
+        else:
+            # Priority B: Successor (Segment Starts After Station)
+            successors = route_segments[route_segments['MODEL_MP'] > target_mp]
+
+            if not successors.empty:
+                # Pick the closest one (Min MP)
+                best_match = successors.loc[successors['MODEL_MP'].idxmin()]
+                matched_segid = best_match['SEGID']
+                match_type = "Successor (>)"
+
+    match_results.append({
+        'STATION': station_id,
+        'MATCHED_SEGID': matched_segid,
+        'MATCH_TYPE': match_type
+    })
+
+df_matches = pd.DataFrame(match_results)
+
+# --- 4. Final Merge (Create Master Validation Table) ---
+# A. Join Matches to Observed Counts (Inner Join)
+df_validation = df_matches.merge(df_ccs_2023, on='STATION', how='inner')
+
+# B. Join to Model Attributes (Using the Matched SEGID)
+# We pull FTCLASS, ATYPENAME, and COUNTY from here
+df_validation = df_validation.merge(
+    df_model_final[['SEGID', 'FTCLASS', 'ATYPENAME', 'COUNTY_NAME',
+                    'AM_Vol', 'MD_Vol', 'PM_Vol', 'EV_Vol', 'DY_Vol']],
+    left_on='MATCHED_SEGID',
+    right_on='SEGID',
+    how='left'
 )
 
-# 2. Quality Control (Optional but Recommended)
-# View the results sorted by distance (Descending)
-# This puts the most "suspicious" matches (furthest away) at the top
-gdf_ccs_mapped.sort_values("distance_meters", ascending=False)[
-    ["STATION", "SEGID", "STREET", "distance_meters"]
-]
+# Calculate Daily Diff for quick check
+df_validation['DIFF_DY'] = df_validation['DY_Vol'] - \
+    df_validation['AVG_DY_VOL']
+
+# --- 5. Export to OJS ---
+# We convert to a list of dictionaries for easy consumption in JavaScript
+ojs_data = df_validation.to_dict(orient='records')
 ```
 
 ```{python}
-# Merge model links with station geometry
-gdf_links_with_dist = gdf_model_segments.merge(
-    gdf_ccs_locations[["SEGID", "geometry"]],
-    on="SEGID",
-    how="left",
-    suffixes=("", "_station"),
-)
+# | label: transfer-to-ojs
+# | echo: false
 
-# Calculate distance between link geometry and station geometry
-gdf_links_with_dist["distance_meters"] = gdf_links_with_dist.geometry.distance(
-    gpd.GeoSeries(gdf_links_with_dist["geometry_station"], crs=CRS_UTM)
-)
+from IPython.display import display, HTML
+import json
 
-# Clean up (Optional: remove the extra geometry column if you want)
-gdf_links_with_dist.drop(columns=["geometry_station"], inplace=True)
+# Standard Quarto way to pass data to OJS
+print("Transferring data to OJS...")
+# ojs_define is a Quarto-specific function available in .qmd files
+ojs_define(data_py=ojs_data)
 ```
 
-By Period, Direction, and Functional Class
+```{ojs}
+//| label: ojs-dashboard
+//| echo: false
+
+// 1. Import libraries
+import { aq, op } from '@uwdata/arquero'
+import { Plot } from '@observablehq/plot'
+
+// 2. Create the Dropdown Input
+viewof group_var = Inputs.select(
+  ["FTCLASS", "ATYPENAME", "COUNTY_NAME"],
+  {label: "Group Validation By:", value: "FTCLASS"}
+)
+
+// 3. Process Data (Arquero is great for this in browser)
+// We pivot the data to sum Observed and Modeled volumes by the selected group
+summary_data = {
+  // Convert Python data to Arquero Table
+  let dt = aq.from(data_py)
+    .filter(d => d[group_var] != null) // Remove unmatched rows
+    .groupby(group_var)
+    .rollup({
+      Stations: op.count(),
+      Obs_Daily: op.sum('AVG_DY_VOL'),
+      Mod_Daily: op.sum('DY_Vol'),
+      Obs_AM: op.sum('AVG_AM_VOL'),
+      Mod_AM: op.sum('AM_Vol'),
+      Obs_PM: op.sum('AVG_PM_VOL'),
+      Mod_PM: op.sum('PM_Vol')
+    })
+    .derive({
+      Diff_Daily: d => d.Mod_Daily - d.Obs_Daily,
+      Pct_Diff_Daily: d => (d.Mod_Daily - d.Obs_Daily) / d.Obs_Daily,
+      // Create a clean label for the plot
+      Group: d => d[group_var]
+    })
+    .orderby(group_var)
+
+  return dt
+}
+
+// 4. Render the Summary Table
+Inputs.table(summary_data, {
+  columns: [
+    group_var, "Stations",
+    "Obs_Daily", "Mod_Daily", "Diff_Daily", "Pct_Diff_Daily"
+  ],
+  header: {
+    [group_var]: "Category",
+    Obs_Daily: "Observed (Daily)",
+    Mod_Daily: "Modeled (Daily)",
+    Diff_Daily: "Difference",
+    Pct_Diff_Daily: "% Difference"
+  },
+  format: {
+    Obs_Daily: d => d.toLocaleString(),
+    Mod_Daily: d => d.toLocaleString(),
+    Diff_Daily: d => d.toLocaleString(),
+    Pct_Diff_Daily: d => (d * 100).toFixed(1) + "%"
+  }
+})
+
+// 5. Render Interactive Plot (Modeled vs Observed)
+Plot.plot({
+  title: `Modeled vs Observed Volume by ${group_var}`,
+  marginLeft: 150,
+  marks: [
+    Plot.barX(summary_data, {
+      x: "Obs_Daily",
+      y: "Group",
+      fill: "#e0e0e0", // Light gray for Observed
+      title: "Observed"
+    }),
+    Plot.tickX(summary_data, {
+      x: "Mod_Daily",
+      y: "Group",
+      stroke: d => d.Mod_Daily > d.Obs_Daily ? "red" : "blue", // Red if over-modeled
+      strokeWidth: 3,
+      title: "Modeled"
+    }),
+    Plot.text(summary_data, {
+      x: d => Math.max(d.Obs_Daily, d.Mod_Daily),
+      y: "Group",
+      text: d => (d.Pct_Diff_Daily * 100).toFixed(1) + "%",
+      dx: 5,
+      textAnchor: "start"
+    })
+  ],
+  x: { label: "Daily Traffic Volume" },
+  y: { label: "" },
+  color: { legend: true }
+})
+```
