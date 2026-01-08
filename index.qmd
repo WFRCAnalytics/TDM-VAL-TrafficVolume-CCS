@@ -398,18 +398,18 @@ valid_segids = df_segid_detail["SEGID"].dropna().unique().tolist()
 segid_str = ", ".join(map(lambda x: repr(str(x)), valid_segids))
 
 # 3. Load the segments
-gdf_segments_v10 = gpd.read_file(
+gdf_segments = gpd.read_file(
     Path("_data/raw/Segments/WFv910_Segments.shp"),
     where=f"SEGID IN ({segid_str})",
     engine="pyogrio",
 ).to_crs(CRS_UTM)
 
-len(gdf_segments_v10)
+len(gdf_segments)
 ```
 
 ```{python}
 # One less SEGID in segmets shapefile
-gdf_segments_v10["SEGID"].nunique() == df_segid_detail["SEGID"].nunique()
+gdf_segments["SEGID"].nunique() == df_segid_detail["SEGID"].nunique()
 ```
 
 # Data Cleaning
@@ -444,11 +444,9 @@ temp_route = df_model_clean['SEGID'].str.split('_').str[0]
 df_model_clean.loc[:, 'MODEL_ROUTE'] = pd.to_numeric(
     temp_route, errors='coerce')
 
-# Drop invalid routes and cast to Integer for robust matching
+# Parse SEGID & Routes
 df_model_clean = df_model_clean.dropna(subset=['MODEL_ROUTE']).copy()
 df_model_clean['MODEL_ROUTE'] = df_model_clean['MODEL_ROUTE'].astype(int)
-
-# Extract Milepost
 df_model_clean['MODEL_MP'] = df_model_clean['SEGID'].str.split(
     '_').str[1].astype(float)
 ```
@@ -457,7 +455,7 @@ df_model_clean['MODEL_MP'] = df_model_clean['SEGID'].str.split(
 
 ```{python}
 # We merge the prepared volumes with the clean gdf_segments geometry
-gdf_model_final = gdf_segments_v10.merge(
+gdf_model_final = gdf_segments[['SEGID', 'SUTRK2022', 'CUTRK2022', 'CO_FIPS', 'geometry']].merge(
     df_model_clean[['SEGID', 'MODEL_ROUTE', 'MODEL_MP', 'FTCLASS', 'ATYPENAME',
                     'AM_Vol', 'MD_Vol', 'PM_Vol', 'EV_Vol', 'DY_Vol']],
     on='SEGID',
@@ -476,8 +474,10 @@ fips_map = {
     57: 'Weber'
 }
 
-gdf_model_final['COUNTY_NM'] = gdf_model_final['CO_FIPS'].map(
+gdf_model_final['COUNTY_NAME'] = gdf_model_final['CO_FIPS'].map(
     fips_map).fillna('Other')
+
+gdf_model_final['COUNTY_NAME']
 ```
 
 # Spatial Operations
@@ -489,76 +489,219 @@ gdf_model_final['COUNTY_NM'] = gdf_model_final['CO_FIPS'].map(
 # | echo: true
 
 match_results = []
+used_segids = set()
 
-for idx, ccs_row in gdf_obs_counts.iterrows():
-    station_id = ccs_row['STATION']
-    target_route = ccs_row['ROUTE']
-    target_mp = ccs_row['MP']
+# --- PASS 1: High-Confidence Route & MP Matching ---
+print("Starting Pass 1: Route & Milepost Matching...")
+
+for idx, ccs_row in gdf_ccs_process.iterrows():
+    station_id = ccs_row["STATION"]
+    target_route = ccs_row["CCS_ROUTE"]
+    target_mp = ccs_row["MP"]
 
     # Filter Model Data to the specific Route
-    route_segments = gdf_model_final[gdf_model_final['MODEL_ROUTE']
-                                     == target_route]
+    route_segments = gdf_model_final[gdf_model_final["MODEL_ROUTE"] == target_route]
 
     matched_segid = None
     match_type = "No Match"
 
     if not route_segments.empty:
         # Priority A: Predecessor (Segment BMP <= Station MP)
-        predecessors = route_segments[route_segments['MODEL_MP'] <= target_mp]
-
+        predecessors = route_segments[route_segments["MODEL_MP"] <= target_mp]
         if not predecessors.empty:
-            # Pick the closest one (Max BMP)
-            best_match = predecessors.loc[predecessors['MODEL_MP'].idxmax()]
-            matched_segid = best_match['SEGID']
+            best_match = predecessors.loc[predecessors["MODEL_MP"].idxmax()]
+            matched_segid = best_match["SEGID"]
             match_type = "Predecessor (<=)"
         else:
             # Priority B: Successor (Segment BMP > Station MP)
-            successors = route_segments[route_segments['MODEL_MP'] > target_mp]
-
+            successors = route_segments[route_segments["MODEL_MP"] > target_mp]
             if not successors.empty:
-                # Pick the closest one (Min BMP)
-                best_match = successors.loc[successors['MODEL_MP'].idxmin()]
-                matched_segid = best_match['SEGID']
+                best_match = successors.loc[successors["MODEL_MP"].idxmin()]
+                matched_segid = best_match["SEGID"]
                 match_type = "Successor (>)"
 
-    match_results.append({
-        'STATION': station_id,
-        'MATCHED_SEGID': matched_segid,
-        'MATCH_TYPE': match_type
-    })
+    # If we found a match, add it to our "Used" set immediately
+    if matched_segid:
+        used_segids.add(matched_segid)
 
-df_matches = pd.DataFrame(match_results)
-print(df_matches['MATCH_TYPE'].value_counts())
+    match_results.append(
+        {
+            "STATION": station_id,
+            "MATCHED_SEGID": matched_segid,
+            "MATCH_TYPE": match_type,
+            "geometry": ccs_row["geometry"],  # Keep geometry for Pass 2
+        }
+    )
+
+# --- PASS 2: Spatial Fallback for Unmatched Stations ---
+print("Starting Pass 2: Spatial Fallback (excluding used segments)...")
+
+for i, result in enumerate(match_results):
+    if result["MATCHED_SEGID"] is None:
+        station_geom = result["geometry"]
+
+        # Filter available segments: Must NOT be in the "Used" set
+        # This prevents taking a segment that was matched by Route/MP
+        available_segments = gdf_model_final[
+            ~gdf_model_final["SEGID"].isin(used_segids)
+        ]
+
+        if not available_segments.empty:
+            # Calculate distance to all AVAILABLE segments
+            # (Note: Warning - Ensure CRS matches. Assuming both are NAD83/UTM12N or similar projected CRS)
+            distances = available_segments.distance(station_geom)
+
+            # Find closest
+            nearest_idx = distances.idxmin()
+            best_match = available_segments.loc[nearest_idx]
+
+            # Assign Match
+            matched_segid = best_match["SEGID"]
+            match_results[i]["MATCHED_SEGID"] = matched_segid
+            match_results[i]["MATCH_TYPE"] = "Spatial Fallback"
+
+            # Mark this SEGID as used so the next fallback doesn't grab it
+            used_segids.add(matched_segid)
+
+# Convert to DataFrame
+df_matches = pd.DataFrame(match_results).drop(columns=["geometry"])
+print("Final Match Breakdown:")
+print(df_matches["MATCH_TYPE"].value_counts())
 ```
 
 ## Create Master Validation Table
 
+### Join Observed Counts and Model Attributes
 
 ```{python}
-# | label: create-master
+# | label: create-master-long
 # | echo: true
 
 # 1. Join Matches to Observed Counts (Inner Join filters to valid stations only)
-df_validation = df_matches.merge(df_ccs_2023, on='STATION', how='inner')
+df_merged = df_matches.merge(df_ccs_2023, on='STATION', how='inner')
 
-# 2. Join to Model Attributes using the Matched SEGID
-df_validation = df_validation.merge(
-    gdf_model_final[['SEGID', 'FTCLASS', 'ATYPENAME', 'COUNTY_NM',
+# 2. Join to Model Attributes
+df_merged = df_merged.merge(
+    gdf_model_final[['SEGID', 'FTCLASS', 'ATYPENAME', 'COUNTY_NAME',
+                     'SUTRK2022', 'CUTRK2022',
                      'AM_Vol', 'MD_Vol', 'PM_Vol', 'EV_Vol', 'DY_Vol']],
     left_on='MATCHED_SEGID',
     right_on='SEGID',
     how='left'
 )
+```
 
-# 3. Calculate Differences
-df_validation['DIFF_DY'] = df_validation['DY_Vol'] - \
-    df_validation['AVG_DY_VOL']
-df_validation['PCT_DIFF_DY'] = (
-    df_validation['DIFF_DY'] / df_validation['AVG_DY_VOL']).round(3)
+### Pivot Periods (Wide -> Long)
 
-# Display sample
-df_validation[['STATION', 'MATCHED_SEGID', 'FTCLASS',
-               'AVG_DY_VOL', 'DY_Vol', 'PCT_DIFF_DY']].head()
+```{python}
+# 3. Pivot to Long Format (The "Tidy" Data Step)
+# We melt the dataframe so "Period" becomes a dimension, not a column name.
+
+# A. Melt Observed Counts
+id_vars = [
+    "STATION",
+    "MATCHED_SEGID",
+    "FTCLASS",
+    "ATYPENAME",
+    "COUNTY_NAME",
+    "SUTRK2022",
+    "CUTRK2022",
+]
+
+df_obs_long = df_merged.melt(
+    id_vars=id_vars,
+    value_vars=["AVG_AM_VOL", "AVG_MD_VOL", "AVG_PM_VOL", "AVG_EV_VOL"],
+    var_name="PERIOD_KEY",
+    value_name="OBSERVED_TOTAL",
+)
+
+# Extract simple period name (AM, MD, PM, EV, DY) from the column name
+df_obs_long["PERIOD"] = df_obs_long["PERIOD_KEY"].str.split("_").str[1]
+```
+
+### Convert Modeled Data to Long Format
+
+```{python}
+# B. Melt Modeled Counts
+# We use the same ID variables to ensure alignment
+df_mod_long = df_merged.melt(
+    id_vars=id_vars,
+    value_vars=["AM_Vol", "MD_Vol", "PM_Vol", "EV_Vol"],
+    var_name="MOD_KEY",
+    value_name="MODELED_TOTAL",
+)
+
+# Extract period name (AM, MD...) - splitting 'AM_Vol' gives 'AM' at index 0
+df_mod_long["PERIOD"] = df_mod_long["MOD_KEY"].str.split("_").str[0]
+```
+
+### Merge to get Period-level Total Volumes
+
+```{python}
+# Merge to get Period-level Total Volumes
+df_period = pd.merge(
+    df_obs_long.drop(columns=['PERIOD_KEY']),
+    df_mod_long.drop(columns=['MOD_KEY']),
+    on=id_vars + ['PERIOD'],
+    how='inner'
+)
+```
+
+### Expand Vehicle Types (Vectorized)
+
+```{python}
+# First, ensure all percentages exist
+df_period["PCT_SUT"] = df_period["SUTRK2022"].fillna(0)
+df_period["PCT_CUT"] = df_period["CUTRK2022"].fillna(0)
+df_period["PCT_AUTO"] = 1.0 - (df_period["PCT_SUT"] + df_period["PCT_CUT"])
+
+# Melt the percentages into a single column
+df_long = df_period.melt(
+    id_vars=[
+        "STATION",
+        "MATCHED_SEGID",
+        "FTCLASS",
+        "ATYPENAME",
+        "COUNTY_NAME",
+        "PERIOD",
+        "OBSERVED_TOTAL",
+        "MODELED_TOTAL",
+    ],
+    value_vars=["PCT_AUTO", "PCT_SUT", "PCT_CUT"],
+    var_name="TYPE_KEY",
+    value_name="SHARE",
+)
+
+# Clean up Vehicle labels
+type_map = {"PCT_AUTO": "Auto", "PCT_SUT": "SUT", "PCT_CUT": "CUT"}
+df_long["VEHICLE_TYPE"] = df_long["TYPE_KEY"].map(type_map)
+
+# Single vectorized multiplication for all rows
+df_long["OBSERVED"] = df_long["OBSERVED_TOTAL"] * df_long["SHARE"]
+df_long["MODELED"] = df_long["MODELED_TOTAL"] * df_long["SHARE"]
+```
+
+### Final Cleanup & Export
+
+```{python}
+cols_final = [
+    "STATION",
+    "MATCHED_SEGID",
+    "FTCLASS",
+    "ATYPENAME",
+    "COUNTY_NAME",
+    "PERIOD",
+    "VEHICLE_TYPE",
+    "OBSERVED",
+    "MODELED",
+]
+df_final = df_long[cols_final].copy()
+
+# Calculate stats
+df_final["DIFF"] = df_final["MODELED"] - df_final["OBSERVED"]
+df_final["PCT_DIFF"] = (df_final["DIFF"] / df_final["OBSERVED"]).round(3)
+
+df_final.to_csv("_output/dashboard_data.csv", index=False)
 ```
 
 ## Interactive Dashboard
@@ -569,94 +712,4 @@ df_validation[['STATION', 'MATCHED_SEGID', 'FTCLASS',
 
 # Transfer the clean dataframe to OJS
 ojs_define(data_py=df_validation.to_dict(orient='records'))
-```
-
-```{ojs}
-//| label: ojs-dashboard
-//| echo: false
-
-// Import visualization libraries
-import { aq, op } from '@uwdata/arquero'
-import { Plot } from '@observablehq/plot'
-
-// 1. Controls
-viewof group_var = Inputs.select(
-  ["FTCLASS", "ATYPENAME", "COUNTY_NM"],
-  {label: "Group By:", value: "FTCLASS"}
-)
-
-// 2. Data Processing (Arquero)
-summary_data = {
-  let dt = aq.from(data_py)
-    .filter(d => d[group_var] != null) // Remove Unmatched
-    .groupby(group_var)
-    .rollup({
-      Stations: op.count(),
-      Obs_Daily: op.sum('AVG_DY_VOL'),
-      Mod_Daily: op.sum('DY_Vol'),
-      Obs_AM: op.sum('AVG_AM_VOL'),
-      Mod_AM: op.sum('AM_Vol')
-    })
-    .derive({
-      Diff_Daily: d => d.Mod_Daily - d.Obs_Daily,
-      Pct_Diff_Daily: d => (d.Mod_Daily - d.Obs_Daily) / d.Obs_Daily,
-      Group: d => d[group_var]
-    })
-    .orderby(group_var)
-
-  return dt
-}
-
-// 3. Visualization
-Plot.plot({
-  title: `Modeled vs Observed Volume by ${group_var}`,
-  marginLeft: 150,
-  height: 400,
-  marks: [
-    Plot.barX(summary_data, {
-      x: "Obs_Daily",
-      y: "Group",
-      fill: "#e0e0e0",
-      title: "Observed"
-    }),
-    Plot.tickX(summary_data, {
-      x: "Mod_Daily",
-      y: "Group",
-      stroke: d => d.Mod_Daily > d.Obs_Daily ? "#d32f2f" : "#1976d2", // Red/Blue
-      strokeWidth: 3,
-      title: "Modeled"
-    }),
-    Plot.text(summary_data, {
-      x: d => Math.max(d.Obs_Daily, d.Mod_Daily),
-      y: "Group",
-      text: d => (d.Pct_Diff_Daily * 100).toFixed(1) + "%",
-      dx: 5,
-      textAnchor: "start"
-    })
-  ],
-  x: { label: "Daily Traffic Volume", grid: true },
-  y: { label: "" },
-  color: { legend: true }
-})
-
-// 4. Data Table
-Inputs.table(summary_data, {
-  columns: [
-    group_var, "Stations",
-    "Obs_Daily", "Mod_Daily", "Diff_Daily", "Pct_Diff_Daily"
-  ],
-  header: {
-    [group_var]: "Category",
-    Obs_Daily: "Observed (Daily)",
-    Mod_Daily: "Modeled (Daily)",
-    Diff_Daily: "Difference",
-    Pct_Diff_Daily: "% Diff"
-  },
-  format: {
-    Obs_Daily: d => d.toLocaleString(),
-    Mod_Daily: d => d.toLocaleString(),
-    Diff_Daily: d => d.toLocaleString(),
-    Pct_Diff_Daily: d => (d * 100).toFixed(1) + "%"
-  }
-})
 ```
