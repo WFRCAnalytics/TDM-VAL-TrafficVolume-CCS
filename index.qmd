@@ -836,7 +836,7 @@ error_bounds = {
     { x: 25, y_pos: 0.15, y_neg: -0.15 },
     { x: 50, y_pos: 0.15, y_neg: -0.15 },
     { x: 50, y_pos: 0.10, y_neg: -0.10 },
-    { x: Math.max(max_k, 300), y_pos: 0.10, y_neg: -0.10 }
+    { x: Math.max(max_k, 250), y_pos: 0.10, y_neg: -0.10 }
   ];
 
   return bounds;
@@ -844,14 +844,19 @@ error_bounds = {
 
 // 7. VISUALIZATION
 
-md`### 1. Model vs Observed Volumes (000s)`
+md`#### 1. Model vs Observed Volumes (000s)`
+
+// Calculate max values from actual data
+max_obs_k = dash_data.scatter.rollup({ max: op.max("Obs_K") }).get("max") || 1
+max_mod_k = dash_data.scatter.rollup({ max: op.max("Mod_K") }).get("max") || 1
+max_vol_k = Math.max(max_obs_k, max_mod_k)
 
 Plot.plot({
   height: 350,
   aspectRatio: 1,
   grid: true,
-  x: { label: "Observed Volume (000s)" },
-  y: { label: "Modeled Volume (000s)" },
+  x: { label: "Observed Volume (000s)", domain: [0, max_vol_k * 1.05] },
+  y: { label: "Modeled Volume (000s)", domain: [0, max_vol_k * 1.05]  },
   style: { backgroundColor: 'transparent' },
   color: { legend: true, label: dashboard_ctrls.group_by },
   marks: [
@@ -890,7 +895,7 @@ Plot.plot({
   ]
 })
 
-md`### 2. Model vs Observed Percent Error`
+md`#### 2. Model vs Observed Percent Error`
 
 Plot.plot({
   height: 350,
@@ -926,7 +931,7 @@ Plot.plot({
   ]
 })
 
-md`### 3. Aggregate Comparison & Statistics`
+md`#### 3. Aggregate Comparison & Statistics`
 
 // Prepare Bar Data
 bar_data = dash_data.summary.fold(["Obs_Total", "Mod_Total"], { as: ["Metric", "Volume"] })
