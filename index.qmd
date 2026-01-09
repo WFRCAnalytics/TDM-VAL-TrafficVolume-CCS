@@ -852,7 +852,7 @@ max_mod_k = dash_data.scatter.rollup({ max: op.max("Mod_K") }).get("max") || 1
 max_vol_k = Math.max(max_obs_k, max_mod_k)
 
 Plot.plot({
-  height: 350,
+  height: 400,
   aspectRatio: 1,
   grid: true,
   x: { label: "Observed Volume (000s)", domain: [0, max_vol_k * 1.05] },
@@ -898,9 +898,9 @@ Plot.plot({
 md`#### 2. Model vs Observed Percent Error`
 
 Plot.plot({
-  height: 350,
+  height: 400,
   grid: true,
-  x: { label: "Observed Volume (000s)" },
+  x: { label: "Observed Volume (000s)", domain: [0, max_obs_k * 1.05] },
   y: { label: "Percent Error", tickFormat: "+%", domain: [-2, 2] },
   style: { backgroundColor: 'transparent' },
   color: { legend: true, label: dashboard_ctrls.group_by },
@@ -939,7 +939,7 @@ bar_data = dash_data.summary.fold(["Obs_Total", "Mod_Total"], { as: ["Metric", "
 
 Plot.plot({
   marginLeft: 80,
-  height: Math.max(350, dash_data.summary.numRows() * 40),
+  height: Math.max(400, dash_data.summary.numRows() * 40),
   color: {
      domain: ["Observed", "Modeled"],
      range: ["#77933c", "#376092"],
