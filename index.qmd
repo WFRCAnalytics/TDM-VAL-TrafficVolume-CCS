@@ -820,7 +820,7 @@ trendlines = {
 md`### 1. Model vs Observed Volumes (000s)`
 
 Plot.plot({
-  height: 500,
+  height: 350,
   grid: true,
   aspectRatio: 1,
   x: { label: "Observed Volume (000s)" },
@@ -857,7 +857,7 @@ Plot.plot({
 md`### 2. Model vs Observed Percent Error`
 
 Plot.plot({
-  height: 400,
+  height: 350,
   grid: true,
   x: { label: "Observed Volume (000s)" },
   y: { label: "Percent Error", tickFormat: "+%", domain: [-1, 2] }, // Cap visual Y axis for better readability
@@ -885,8 +885,8 @@ bar_data = dash_data.summary.fold(["Obs_Total", "Mod_Total"], { as: ["Metric", "
     .derive({ Metric_Label: d => d.Metric === "Obs_Total" ? "Observed" : "Modeled" })
 
 Plot.plot({
-  marginLeft: 150,
-  height: Math.max(300, dash_data.summary.numRows() * 40),
+  marginLeft: 80,
+  height: Math.max(350, dash_data.summary.numRows() * 40),
   color: {
      domain: ["Observed", "Modeled"],
      range: ["#bababa", "#1976d2"],
