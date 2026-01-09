@@ -772,17 +772,20 @@ dash_data = {
       Pct_Error: d => d.Obs_Total > 0 ? (d.Mod_Total - d.Obs_Total) / d.Obs_Total : 0
     })
 
-  // B. Summary Data (Aggregate Level)
+  // B. Summary Data (Aggregate Level) - Enhanced with RMSE
   let summary = base
     .groupby(group_by)
     .rollup({
       Stations: op.count(),
       Obs_Total: op.sum('OBSERVED'),
-      Mod_Total: op.sum('MODELED')
+      Mod_Total: op.sum('MODELED'),
+      Diff_Sq_Sum: d => op.sum(op.pow(d.MODELED - d.OBSERVED, 2))
     })
     .derive({
-      Diff: d => d.Mod_Total - d.Obs_Total,
-      Pct_Diff: d => (d.Mod_Total - d.Obs_Total) / d.Obs_Total,
+      Difference: d => d.Mod_Total - d.Obs_Total,
+      Percent_Difference: d => (d.Mod_Total - d.Obs_Total) / d.Obs_Total,
+      RMSE: d => Math.sqrt(d.Diff_Sq_Sum / d.Stations),
+      Percent_RMSE: d => d.Obs_Total > 0 ? Math.sqrt(d.Diff_Sq_Sum / d.Stations) / (d.Obs_Total / d.Stations) : 0,
       Label: (d, $) => d[$.gb]
     })
     .orderby(group_by)
@@ -793,9 +796,8 @@ dash_data = {
 // 5. HELPER: TRENDLINES DATA
 // Generates lines for Equal, +/- 10% to 40%
 trendlines = {
-  const max_k = dash_data.scatter.rollup({ max: op.max("Mod_K") }).get("max") || 1; // Use Mod Max to ensure lines go high enough
+  const max_k = dash_data.scatter.rollup({ max: op.max("Mod_K") }).get("max") || 1;
 
-  // Slopes: 1.4 = +40%, 0.6 = -40%
   const lines = [
     { slope: 1.4, label: "+40%" },
     { slope: 1.3, label: "+30%" },
@@ -808,21 +810,46 @@ trendlines = {
     { slope: 0.6, label: "-40%" }
   ];
 
-  // Create 'from-to' points for Plot.line
   return lines.flatMap(l => [
     { x: 0, y: 0, label: l.label, slope: l.slope },
     { x: max_k, y: max_k * l.slope, label: l.label, slope: l.slope }
   ]);
 }
 
-// 6. VISUALIZATION
+// 6. HELPER: PERCENT ERROR BOUNDS
+// Creates stepped boundary lines similar to reference document
+error_bounds = {
+  const max_k = dash_data.scatter.rollup({ max: op.max("Obs_K") }).get("max") || 1;
+
+  // Define control thresholds (in thousands) and their error bounds
+  const bounds = [
+    { x: 0, y_pos: 2.0, y_neg: -2.0 },
+    { x: 1, y_pos: 2.0, y_neg: -2.0 },
+    { x: 1, y_pos: 1.0, y_neg: -1.0 },
+    { x: 2.5, y_pos: 1.0, y_neg: -1.0 },
+    { x: 2.5, y_pos: 0.5, y_neg: -0.5 },
+    { x: 5, y_pos: 0.5, y_neg: -0.5 },
+    { x: 5, y_pos: 0.25, y_neg: -0.25 },
+    { x: 10, y_pos: 0.25, y_neg: -0.25 },
+    { x: 10, y_pos: 0.20, y_neg: -0.20 },
+    { x: 25, y_pos: 0.20, y_neg: -0.20 },
+    { x: 25, y_pos: 0.15, y_neg: -0.15 },
+    { x: 50, y_pos: 0.15, y_neg: -0.15 },
+    { x: 50, y_pos: 0.10, y_neg: -0.10 },
+    { x: Math.max(max_k, 300), y_pos: 0.10, y_neg: -0.10 }
+  ];
+
+  return bounds;
+}
+
+// 7. VISUALIZATION
 
 md`### 1. Model vs Observed Volumes (000s)`
 
 Plot.plot({
   height: 350,
-  grid: true,
   aspectRatio: 1,
+  grid: true,
   x: { label: "Observed Volume (000s)" },
   y: { label: "Modeled Volume (000s)" },
   style: { backgroundColor: 'transparent' },
@@ -850,6 +877,15 @@ Plot.plot({
       fill: "Label",
       stroke: "white", strokeOpacity: 0.5, r: 4,
       title: d => `Station: ${d.STATION}\nGroup: ${d.Label}\nObs: ${d.Obs_Total.toLocaleString()}\nMod: ${d.Mod_Total.toLocaleString()}\nError: ${(d.Pct_Error*100).toFixed(1)}%`
+    }),
+
+    // Linear Regression Trendline
+    Plot.linearRegressionY(dash_data.scatter, {
+      x: "Obs_K",
+      y: "Mod_K",
+      stroke: "rgb(80, 116, 230)",
+      strokeDasharray: "4 4",
+      strokeWidth: 2
     })
   ]
 })
@@ -860,12 +896,24 @@ Plot.plot({
   height: 350,
   grid: true,
   x: { label: "Observed Volume (000s)" },
-  y: { label: "Percent Error", tickFormat: "+%", domain: [-1, 2] }, // Cap visual Y axis for better readability
+  y: { label: "Percent Error", tickFormat: "+%", domain: [-2, 2] },
   style: { backgroundColor: 'transparent' },
   color: { legend: true, label: dashboard_ctrls.group_by },
   marks: [
-    // Zero Error Line (Adaptive)
+    // Zero Error Line
     Plot.ruleY([0], { stroke: "currentColor", strokeWidth: 1.5, strokeOpacity: 0.5 }),
+
+    // Error Bounds (Stepped Lines)
+    // Positive bounds
+    Plot.line(error_bounds, {
+      x: "x", y: "y_pos",
+      stroke: "gray", strokeWidth: 2, strokeOpacity: 0.4
+    }),
+    // Negative bounds
+    Plot.line(error_bounds, {
+      x: "x", y: "y_neg",
+      stroke: "gray", strokeWidth: 2, strokeOpacity: 0.4
+    }),
 
     // Error Dots
     Plot.dot(dash_data.scatter, {
@@ -889,8 +937,9 @@ Plot.plot({
   height: Math.max(350, dash_data.summary.numRows() * 40),
   color: {
      domain: ["Observed", "Modeled"],
-     range: ["#bababa", "#1976d2"],
-     legend: true
+     range: ["#77933c", "#376092"],
+     legend: true,
+     label: "Data Source"
   },
   style: { backgroundColor: 'transparent' },
   x: { label: "Total Volume", grid: true, tickFormat: "s" },
@@ -912,19 +961,23 @@ Plot.plot({
 })
 
 Inputs.table(dash_data.summary, {
-  columns: ["Label", "Stations", "Obs_Total", "Mod_Total", "Diff", "Pct_Diff"],
+  columns: ["Label", "Stations", "Obs_Total", "Mod_Total", "Difference", "Percent_Difference", "RMSE", "Percent_RMSE"],
   header: {
     Label: dashboard_ctrls.group_by,
     Obs_Total: "Observed",
     Mod_Total: "Modeled",
-    Diff: "Diff",
-    Pct_Diff: "% Error"
+    Difference: "Diff",
+    Percent_Difference: "Pct Diff",
+    RMSE: "RMSE",
+    Percent_RMSE: "Pct RMSE"
   },
   format: {
     Obs_Total: d => d.toLocaleString(),
     Mod_Total: d => d.toLocaleString(),
-    Diff: d => d.toLocaleString(),
-    Pct_Diff: d => (d * 100).toFixed(1) + "%"
+    Difference: d => d.toLocaleString(),
+    Percent_Difference: d => (d * 100).toFixed(1) + "%",
+    RMSE: d => d.toLocaleString(undefined, {maximumFractionDigits: 0}),
+    Percent_RMSE: d => (d * 100).toFixed(1) + "%"
   }
 })
 ```
