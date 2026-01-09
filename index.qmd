@@ -724,7 +724,7 @@ data_raw = FileAttachment("_output/dashboard_data.csv").csv({ typed: true })
 viewof dashboard_ctrls = Inputs.form({
   group_by: Inputs.select(
     ["FTCLASS", "ATYPENAME", "COUNTY_NAME", "PERIOD", "VEHICLE_TYPE"],
-    {label: "📊 Color / Group By:", value: "FTCLASS"}
+    {label: "Group Variables:", value: "FTCLASS"}
   ),
   filter_county: Inputs.select(
     ["All"].concat(Array.from(new Set(data_raw.map(d => d.COUNTY_NAME))).sort()),
@@ -744,13 +744,10 @@ viewof dashboard_ctrls = Inputs.form({
   )
 })
 
-// 4. DATA PROCESSING PIPELINE
-// We create a reactive object 'dash_data' that holds both datasets we need
+// 4. DATA PROCESSING
 dash_data = {
   const { group_by, filter_county, filter_atype, filter_period, filter_vehicle } = dashboard_ctrls;
 
-  // A. Base Filtered Data
-  // We pass the filter values as parameters ($) to avoid scope errors
   let base = aq.from(data_raw)
     .params({
       fc: filter_county, fa: filter_atype, fp: filter_period, fv: filter_vehicle, gb: group_by
@@ -760,8 +757,7 @@ dash_data = {
     .filter((d, $) => $.fp === "All" || d.PERIOD === $.fp)
     .filter((d, $) => $.fv === "All" || d.VEHICLE_TYPE === $.fv)
 
-  // B. Scatter Data (Station Level)
-  // Group by Station AND the "Group By" variable to keep the color dimension
+  // A. Scatter Data (Station Level)
   let scatter = base
     .groupby("STATION", group_by)
     .rollup({
@@ -769,12 +765,14 @@ dash_data = {
       Mod_Total: op.sum('MODELED')
     })
     .derive({
-      Label: (d, $) => d[$.gb], // Dynamic label for coloring
-      Max_Vol: d => Math.max(d.Obs_Total, d.Mod_Total) // For scaling
+      Label: (d, $) => d[$.gb],
+      // Create fields in Thousands for cleaner plotting
+      Obs_K: d => d.Obs_Total / 1000,
+      Mod_K: d => d.Mod_Total / 1000,
+      Pct_Error: d => d.Obs_Total > 0 ? (d.Mod_Total - d.Obs_Total) / d.Obs_Total : 0
     })
 
-  // C. Bar/Table Data (Aggregate Level)
-  // Group purely by the "Group By" variable
+  // B. Summary Data (Aggregate Level)
   let summary = base
     .groupby(group_by)
     .rollup({
@@ -792,72 +790,119 @@ dash_data = {
   return { scatter, summary }
 }
 
-// 5. PLOT PREPARATION
-// Calculate max value for the reference line (y=x)
-max_val = dash_data.scatter.rollup({ max: op.max("Max_Vol") }).get("max")
+// 5. HELPER: TRENDLINES DATA
+// Generates lines for Equal, +/- 10% to 40%
+trendlines = {
+  const max_k = dash_data.scatter.rollup({ max: op.max("Mod_K") }).get("max") || 1; // Use Mod Max to ensure lines go high enough
 
-// Fold the summary data to "Long" format for the Grouped Bar Chart
-bar_plot_data = dash_data.summary.fold(["Obs_Total", "Mod_Total"], { as: ["Metric", "Volume"] })
-    .derive({ Metric_Label: d => d.Metric === "Obs_Total" ? "Observed" : "Modeled" })
+  // Slopes: 1.4 = +40%, 0.6 = -40%
+  const lines = [
+    { slope: 1.4, label: "+40%" },
+    { slope: 1.3, label: "+30%" },
+    { slope: 1.2, label: "+20%" },
+    { slope: 1.1, label: "+10%" },
+    { slope: 1.0, label: "Equal" },
+    { slope: 0.9, label: "-10%" },
+    { slope: 0.8, label: "-20%" },
+    { slope: 0.7, label: "-30%" },
+    { slope: 0.6, label: "-40%" }
+  ];
 
-// 6. VISUALIZATION LAYOUT
+  // Create 'from-to' points for Plot.line
+  return lines.flatMap(l => [
+    { x: 0, y: 0, label: l.label, slope: l.slope },
+    { x: max_k, y: max_k * l.slope, label: l.label, slope: l.slope }
+  ]);
+}
 
-md`### 1. Station Scatter Plot`
-md`Each dot represents a station. Points above the diagonal line are over-predicted; points below are under-predicted.`
+// 6. VISUALIZATION
+
+md`### 1. Model vs Observed Volumes (000s)`
 
 Plot.plot({
   height: 500,
   grid: true,
   aspectRatio: 1,
-  x: { label: "Observed Volume", tickFormat: "s", domain: [0, max_val] },
-  y: { label: "Modeled Volume", tickFormat: "s", domain: [0, max_val] },
+  x: { label: "Observed Volume (000s)" },
+  y: { label: "Modeled Volume (000s)" },
   color: { legend: true, label: dashboard_ctrls.group_by },
   marks: [
-    // Reference Line (y=x)
-    Plot.line([[0, 0], [max_val, max_val]], { stroke: "#ccc", strokeDasharray: "4" }),
+    // Trendlines (Adaptive Color)
+    Plot.line(trendlines, {
+      x: "x", y: "y", z: "slope",
+      stroke: "currentColor", strokeOpacity: 0.2, strokeDasharray: "4"
+    }),
+    Plot.text(trendlines.filter(d => d.x > 0), {
+      x: "x", y: "y", text: "label",
+      dx: 5, fill: "currentColor", fillOpacity: 0.5, textAnchor: "start"
+    }),
 
-    // Scatter Dots
+    // Equal Line (Stronger)
+    Plot.line(trendlines.filter(d => d.slope === 1.0), {
+      x: "x", y: "y", stroke: "currentColor", strokeOpacity: 0.5, strokeWidth: 1.5
+    }),
+
+    // Data Dots
     Plot.dot(dash_data.scatter, {
-      x: "Obs_Total",
-      y: "Mod_Total",
+      x: "Obs_K",
+      y: "Mod_K",
       fill: "Label",
-      stroke: "white",
-      strokeWidth: 1,
-      opacity: 0.8,
-      r: 4,
-      title: d => `Station: ${d.STATION}\n${dashboard_ctrls.group_by}: ${d.Label}\nObs: ${d.Obs_Total.toLocaleString()}\nMod: ${d.Mod_Total.toLocaleString()}`
+      stroke: "white", strokeOpacity: 0.5, r: 4,
+      title: d => `Station: ${d.STATION}\nGroup: ${d.Label}\nObs: ${d.Obs_Total.toLocaleString()}\nMod: ${d.Mod_Total.toLocaleString()}\nError: ${(d.Pct_Error*100).toFixed(1)}%`
     })
   ]
 })
 
-md`### 2. Aggregate Comparison`
-md`Comparison of total volumes by category.`
+md`### 2. Model vs Observed Percent Error`
+
+Plot.plot({
+  height: 400,
+  grid: true,
+  x: { label: "Observed Volume (000s)" },
+  y: { label: "Percent Error", tickFormat: "+%", domain: [-1, 2] }, // Cap visual Y axis for better readability
+  color: { legend: false },
+  marks: [
+    // Zero Error Line (Adaptive)
+    Plot.ruleY([0], { stroke: "currentColor", strokeWidth: 1.5, strokeOpacity: 0.5 }),
+
+    // Error Dots
+    Plot.dot(dash_data.scatter, {
+      x: "Obs_K",
+      y: "Pct_Error",
+      fill: "Label",
+      stroke: "white", strokeOpacity: 0.5, r: 4,
+      title: d => `Station: ${d.STATION}\nObs: ${d.Obs_Total.toLocaleString()}\nError: ${(d.Pct_Error*100).toFixed(1)}%`
+    })
+  ]
+})
+
+md`### 3. Aggregate Comparison & Statistics`
+
+// Prepare Bar Data
+bar_data = dash_data.summary.fold(["Obs_Total", "Mod_Total"], { as: ["Metric", "Volume"] })
+    .derive({ Metric_Label: d => d.Metric === "Obs_Total" ? "Observed" : "Modeled" })
 
 Plot.plot({
   marginLeft: 150,
-  height: Math.max(300, dash_data.summary.numRows() * 50), // Auto-resize height
+  height: Math.max(300, dash_data.summary.numRows() * 40),
   color: { domain: ["Observed", "Modeled"], range: ["#bababa", "#1976d2"] },
   x: { label: "Total Volume", grid: true, tickFormat: "s" },
   y: { axis: null },
-  fy: { label: null, axis: "left" }, // Facet Y acts as our categorical axis
+  fy: { label: null, axis: "left" },
   marks: [
-    Plot.barX(bar_plot_data, {
-      x: "Volume",
-      y: "Metric_Label", // Stacks the two bars side-by-side
-      fy: "Label",       // Groups them by category
+    Plot.barX(bar_data, {
+      x: "Volume", y: "Metric_Label", fy: "Label",
       fill: "Metric_Label",
       title: d => `${d.Metric_Label}: ${d.Volume.toLocaleString()}`,
       sort: { fy: "x", reduce: "max", order: "descending" }
     }),
-    Plot.text(bar_plot_data, {
+    Plot.text(bar_data, {
       x: "Volume", y: "Metric_Label", fy: "Label",
       text: d => d.Volume.toLocaleString(),
-      dx: 5, textAnchor: "start", fill: "#666", fontSize: 10
+      dx: 5, textAnchor: "start", fill: "currentColor", fontSize: 10
     })
   ]
 })
-
-md`### 3. Statistics Table`
 
 Inputs.table(dash_data.summary, {
   columns: ["Label", "Stations", "Obs_Total", "Mod_Total", "Diff", "Pct_Diff"],
