@@ -825,6 +825,7 @@ Plot.plot({
   aspectRatio: 1,
   x: { label: "Observed Volume (000s)" },
   y: { label: "Modeled Volume (000s)" },
+  style: { backgroundColor: 'transparent' },
   color: { legend: true, label: dashboard_ctrls.group_by },
   marks: [
     // Trendlines (Adaptive Color)
@@ -860,7 +861,8 @@ Plot.plot({
   grid: true,
   x: { label: "Observed Volume (000s)" },
   y: { label: "Percent Error", tickFormat: "+%", domain: [-1, 2] }, // Cap visual Y axis for better readability
-  color: { legend: false },
+  style: { backgroundColor: 'transparent' },
+  color: { legend: true, label: dashboard_ctrls.group_by },
   marks: [
     // Zero Error Line (Adaptive)
     Plot.ruleY([0], { stroke: "currentColor", strokeWidth: 1.5, strokeOpacity: 0.5 }),
@@ -885,7 +887,12 @@ bar_data = dash_data.summary.fold(["Obs_Total", "Mod_Total"], { as: ["Metric", "
 Plot.plot({
   marginLeft: 150,
   height: Math.max(300, dash_data.summary.numRows() * 40),
-  color: { domain: ["Observed", "Modeled"], range: ["#bababa", "#1976d2"] },
+  color: {
+     domain: ["Observed", "Modeled"],
+     range: ["#bababa", "#1976d2"],
+     legend: true
+  },
+  style: { backgroundColor: 'transparent' },
   x: { label: "Total Volume", grid: true, tickFormat: "s" },
   y: { axis: null },
   fy: { label: null, axis: "left" },
