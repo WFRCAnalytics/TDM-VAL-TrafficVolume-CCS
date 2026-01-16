@@ -524,9 +524,9 @@ print(f"Step 4 Complete: Dashboard data ready at {final_path}")
 ```{python}
 # | label: transfer-ojs
 # | echo: false
-# Note: In a Quarto render, this passes data to OJS.
-# Since we export to CSV, OJS will read the CSV directly below.
-pass
+
+# Transfer the clean dataframe to OJS
+ojs_define(data_py=df_final)
 ```
 
 ```{ojs}
@@ -550,6 +550,10 @@ viewof dashboard_ctrls = Inputs.form({
     ["All"].concat(Array.from(new Set(data_raw.map(d => d.COUNTY_NAME))).sort()),
     {label: "Filter County:", value: "All"}
   ),
+  filter_ftclass: Inputs.select(
+    ["All"].concat(Array.from(new Set(data_raw.map(d => d.FTCLASS))).sort()),
+    {label: "Filter Functional Class:", value: "All"}
+  ),
   filter_atype: Inputs.select(
     ["All"].concat(Array.from(new Set(data_raw.map(d => d.ATYPENAME))).sort()),
     {label: "Filter Area Type:", value: "All"}
@@ -566,13 +570,19 @@ viewof dashboard_ctrls = Inputs.form({
 
 // 4. DATA PROCESSING
 dash_data = {
-  const { group_by, filter_county, filter_atype, filter_period, filter_vehicle } = dashboard_ctrls;
+  const { group_by, filter_county, filter_ftclass, filter_atype, filter_period, filter_vehicle } = dashboard_ctrls;
 
   let base = aq.from(data_raw)
     .params({
-      fc: filter_county, fa: filter_atype, fp: filter_period, fv: filter_vehicle, gb: group_by
+      fc: filter_county,
+      ff: filter_ftclass, // <--- Param for FTCLASS
+      fa: filter_atype,
+      fp: filter_period,
+      fv: filter_vehicle,
+      gb: group_by
     })
     .filter((d, $) => $.fc === "All" || d.COUNTY_NAME === $.fc)
+    .filter((d, $) => $.ff === "All" || d.FTCLASS === $.ff) // <--- Filter Logic
     .filter((d, $) => $.fa === "All" || d.ATYPENAME === $.fa)
     .filter((d, $) => $.fp === "All" || d.PERIOD === $.fp)
     .filter((d, $) => $.fv === "All" || d.VEHICLE_TYPE === $.fv)
