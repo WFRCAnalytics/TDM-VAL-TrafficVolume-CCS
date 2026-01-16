@@ -248,61 +248,73 @@ print(f"Total Stations Loaded (Region): {len(gdf_ccs_locations)}")
 match_results = []
 used_segids = set()
 
-print("Starting Matching Logic...")
+print("Starting Route-Constrained Spatial Matching...")
 
 for idx, ccs_row in gdf_ccs_locations.iterrows():
     station_id = ccs_row["STATION"]
     target_route = ccs_row["ROUTE"]
-    target_mp = ccs_row["MP"]
 
-    # Filter Network to Route
+    # --- PASS 1: Route-Constrained Spatial Match ---
+    # Filter Network to the specific Route first.
+    # This solves the specific MP issue you saw (e.g., Station -816) by picking
+    # the closest segment on Route 15, ignoring slight MP drifts.
     route_segments = gdf_network_clean[gdf_network_clean["MODEL_ROUTE"] == target_route]
 
     matched_segid = None
     match_type = "No Match"
 
     if not route_segments.empty:
-        # Pass 1A: Predecessor
-        predecessors = route_segments[route_segments["MODEL_MP"] <= target_mp]
-        if not predecessors.empty:
-            best_match = predecessors.loc[predecessors["MODEL_MP"].idxmax()]
-            matched_segid = best_match["SEGID"]
-            match_type = "Predecessor (<=)"
-        else:
-            # Pass 1B: Successor
-            successors = route_segments[route_segments["MODEL_MP"] > target_mp]
-            if not successors.empty:
-                best_match = successors.loc[successors["MODEL_MP"].idxmin()]
-                matched_segid = best_match["SEGID"]
-                match_type = "Successor (>)"
+        # Calculate distance to all segments on this route
+        distances = route_segments.distance(ccs_row["geometry"])
 
+        # Pick the absolute closest segment on this route
+        best_idx = distances.idxmin()
+        best_match = route_segments.loc[best_idx]
+
+        matched_segid = best_match["SEGID"]
+        match_type = "Route Match (Spatial)"
+
+    # Add valid match to used set
     if matched_segid:
         used_segids.add(matched_segid)
 
-    match_results.append({
-        "STATION": station_id,
-        "MATCHED_SEGID": matched_segid,
-        "MATCH_TYPE": match_type,
-        "geometry": ccs_row["geometry"]
-    })
+    match_results.append(
+        {
+            "STATION": station_id,
+            "MATCHED_SEGID": matched_segid,
+            "MATCH_TYPE": match_type,
+            "geometry": ccs_row["geometry"],
+        }
+    )
 
-# Pass 2: Spatial Fallback
+# --- PASS 2: Global Spatial Fallback (Unrestricted) ---
+# If Pass 1 failed (e.g., Route ID didn't match), snap to the nearest available segment anywhere.
 for i, result in enumerate(match_results):
     if result["MATCHED_SEGID"] is None:
         station_geom = result["geometry"]
-        # Filter available segments (Not already used)
-        available_segments = gdf_network_clean[~gdf_network_clean["SEGID"].isin(used_segids)]
+
+        # Filter available segments (Exclude those already snapped in Pass 1)
+        available_segments = gdf_network_clean[
+            ~gdf_network_clean["SEGID"].isin(used_segids)
+        ]
 
         if not available_segments.empty:
+            # Calculate distance to ALL remaining segments
             distances = available_segments.distance(station_geom)
-            best_match = available_segments.loc[distances.idxmin()]
+
+            # Snap to the nearest one, regardless of distance
+            min_dist_idx = distances.idxmin()
+            best_match = available_segments.loc[min_dist_idx]
 
             match_results[i]["MATCHED_SEGID"] = best_match["SEGID"]
-            match_results[i]["MATCH_TYPE"] = "Spatial Fallback"
+            match_results[i]["MATCH_TYPE"] = "Global Fallback (Nearest)"
+
+            # Mark as used so future fallbacks don't grab it
             used_segids.add(best_match["SEGID"])
 
-# Create DataFrame and DROP Geometry
+# Create DataFrame
 df_matches = pd.DataFrame(match_results).drop(columns=["geometry"])
+print("Matching Complete. Summary:")
 print(df_matches["MATCH_TYPE"].value_counts())
 ```
 
