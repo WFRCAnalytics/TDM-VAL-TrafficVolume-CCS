@@ -541,32 +541,45 @@ import { Plot } from '@observablehq/plot'
 data_raw = FileAttachment("_output/dashboard_data.csv").csv({ typed: true })
 
 // 3. DASHBOARD CONTROLS
-viewof dashboard_ctrls = Inputs.form({
-  group_by: Inputs.select(
-    ["FTCLASS", "ATYPENAME", "COUNTY_NAME", "PERIOD", "VEHICLE_TYPE"],
-    {label: "Group Variables:", value: "FTCLASS"}
-  ),
-  filter_county: Inputs.select(
-    ["All"].concat(Array.from(new Set(data_raw.map(d => d.COUNTY_NAME))).sort()),
-    {label: "Filter County:", value: "All"}
-  ),
-  filter_ftclass: Inputs.select(
-    ["All"].concat(Array.from(new Set(data_raw.map(d => d.FTCLASS))).sort()),
-    {label: "Filter Functional Class:", value: "All"}
-  ),
-  filter_atype: Inputs.select(
-    ["All"].concat(Array.from(new Set(data_raw.map(d => d.ATYPENAME))).sort()),
-    {label: "Filter Area Type:", value: "All"}
-  ),
-  filter_period: Inputs.select(
-    ["All", "AM", "MD", "PM", "EV"],
-    {label: "Filter Period:", value: "All"}
-  ),
-  filter_vehicle: Inputs.select(
-    ["All", "Auto", "SUT", "CUT"],
-    {label: "Filter Vehicle:", value: "All"}
-  )
-})
+viewof dashboard_ctrls = {
+  // 1. Define the Form Object (Same as before)
+  const form = Inputs.form({
+    group_by: Inputs.select(
+      ["FTCLASS", "ATYPENAME", "COUNTY_NAME", "PERIOD", "VEHICLE_TYPE"],
+      {label: "Group Vars:", value: "FTCLASS"}
+    ),
+    filter_county: Inputs.select(
+      ["All"].concat(Array.from(new Set(data_raw.map(d => d.COUNTY_NAME))).sort()),
+      {label: "Filter County:", value: "All"}
+    ),
+    filter_ftclass: Inputs.select(
+      ["All"].concat(Array.from(new Set(data_raw.map(d => d.FTCLASS))).sort()),
+      {label: "Filter FTClass:", value: "All"}
+    ),
+    filter_atype: Inputs.select(
+      ["All"].concat(Array.from(new Set(data_raw.map(d => d.ATYPENAME))).sort()),
+      {label: "Filter AType:", value: "All"}
+    ),
+    filter_period: Inputs.select(
+      ["All", "AM", "MD", "PM", "EV"],
+      {label: "Filter Period:", value: "All"}
+    ),
+    filter_vehicle: Inputs.select(
+      ["All", "Auto", "SUT", "CUT"],
+      {label: "Filter Vehicle:", value: "All"}
+    )
+  });
+
+  // 2. Apply Custom CSS Layout
+  // This turns the container into a Grid with 3 flexible columns
+  form.style.display = "grid";
+  form.style.gridTemplateColumns = "repeat(auto-fit, minmax(250px, 1fr))";
+  form.style.gap = "10px";
+  form.style.alignItems = "flex-end"; // Aligns inputs to the bottom if labels vary in height
+  form.style.marginBottom = "20px";   // Adds spacing below the controls
+
+  return form;
+}
 
 // 4. DATA PROCESSING
 dash_data = {
