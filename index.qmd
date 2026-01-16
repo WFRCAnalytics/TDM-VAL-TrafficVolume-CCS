@@ -436,31 +436,32 @@ print(f"Step 3 Complete: Loaded {len(df_model_clean)} model records.")
 
 This step is designed to run independently if the CSVs exist.
 
-### Load Intermediates (Resiliency Check)
+### Export Observed Data
+
+```{python}
+# Bridge + Observed (Inner Join = Only Stations with Data)
+df_valid_obs = df_bridge.merge(df_observed_counts, on="STATION", how="inner")
+
+# Master Observed File Generated for validation
+df_valid_obs.to_csv(output_dir / "observed_traffic_with_crosswalk.csv", index=False)
+```
+
+### Merge Data
 
 ```{python}
 # --- 4.1 Load Intermediates (Resiliency Check) ---
 # If this notebook is running top-to-bottom, we have the dfs.
 # If running as a standalone script later, we load from CSV.
 
-if 'df_bridge' not in locals():
+if "df_valid_obs" not in locals():
     print("Loading Bridge from CSV...")
-    df_bridge = pd.read_csv(intermediate_dir / "station_segid_bridge.csv")
-
-if 'df_observed_counts' not in locals():
-    print("Loading Observed Counts from CSV...")
-    df_observed_counts = pd.read_csv(intermediate_dir / "observed_counts_raw.csv")
+    df_valid_obs = pd.read_csv(output_dir / "observed_traffic_with_crosswalk.csv")
 ```
-
-### Merge Data
 
 ```{python}
 # --- 4.2 Merge Data ---
 
-# A. Bridge + Observed (Inner Join = Only Stations with Data)
-df_valid_obs = df_bridge.merge(df_observed_counts, on="STATION", how="inner")
-
-# B. + Modeled Volumes AND Context Attributes
+# B. Add Modeled Volumes AND Context Attributes
 # We pull FTCLASS and ATYPENAME from the Model Results now
 model_cols_needed = [
     "SEGID",
