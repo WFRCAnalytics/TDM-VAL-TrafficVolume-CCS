@@ -184,11 +184,41 @@ gdf_network_clean['MODEL_ROUTE'] = gdf_network_clean['MODEL_ROUTE'].astype(int)
 print(f"Loaded Network with {len(gdf_network_clean)} valid segments.")
 ```
 
+### WF-TDM Region
+
+```{python}
+# Configuration
+service_url = "https://services1.arcgis.com/taguadKoI1XFwivx/ArcGIS/rest/services/RegionalBoundaryComponents/FeatureServer/0"
+gdb_path = raw_dir / "RegionalBoundary.gpkg"
+
+# Download/Load logic
+if not gdb_path.exists():
+    print("Downloading Regional Boundaries...")
+    gdf_download = arc_read(service_url)
+    gdf_download.to_file(gdb_path, layer="RegionalBoundaryComponents", driver="GPKG")
+else:
+    print("Loading Regional Boundaries from cache...")
+
+# Load and Project
+gdf_region = (
+    gpd.read_file(
+        gdb_path,
+        layer="RegionalBoundaryComponents",
+        where="PlanOrg IN ('MAG MPO', 'WFRC MPO')",
+    )
+    .dissolve()
+    .to_crs(CRS_UTM)
+)
+
+# Fix the holes and slivers in the regional boundary
+gdf_region["geometry"] = gdf_region.buffer(1).buffer(-1)
+```
+
 ### Load CCS Stations
 
 ```{python}
 # Configuration
-service_url = "[https://services.arcgis.com/pA2nEVnB6tquxgOW/ArcGIS/rest/services/CCS_Data_v2/FeatureServer/1](https://services.arcgis.com/pA2nEVnB6tquxgOW/ArcGIS/rest/services/CCS_Data_v2/FeatureServer/1)"
+service_url = "https://services.arcgis.com/pA2nEVnB6tquxgOW/ArcGIS/rest/services/CCS_Data_v2/FeatureServer/1"
 gdb_path = raw_dir / "CCS_Data_v2.gpkg"
 
 # Download/Load logic
@@ -202,7 +232,14 @@ else:
     print("Loading CCS Stations from cache...")
 
 # Load and Project
-gdf_ccs_locations = gpd.read_file(gdb_path, layer="CCS_Data_v2").to_crs(CRS_UTM)
+gdf_ccs_locations = gpd.read_file(
+    gdb_path,
+    layer="CCS_Data_v2",
+    # where="COUNTY IN ('Box Elder', 'Weber', 'Davis', 'Salt Lake', 'Utah')",
+    mask=gdf_region,
+).to_crs(CRS_UTM)
+
+print(f"Total Stations Loaded (Region): {len(gdf_ccs_locations)}")
 ```
 
 ### Run Spatial Matching Logic
@@ -432,7 +469,7 @@ df_master = df_valid_obs.merge(
     df_model_clean[available_cols],
     left_on="MATCHED_SEGID",
     right_on="SEGID",
-    how="left",
+    how="inner",
 )
 
 # Fill missing model volumes with 0 (assuming no flow if missing from summary)
@@ -447,15 +484,21 @@ df_master[vol_cols] = df_master[vol_cols].fillna(0)
 
 # Define ID variables (Dimensions)
 id_vars = [
-    "STATION", "MATCHED_SEGID", "FTCLASS", "ATYPENAME",
-    "COUNTY_NAME", "PCT_SUT", "PCT_CUT"
+    "STATION",
+    "MATCHED_SEGID",
+    "FTCLASS",
+    "ATYPENAME",
+    "COUNTY_NAME",
+    "PCT_SUT",
+    "PCT_CUT",
 ]
 
 # A. Melt Observed (Wide to Long)
 df_obs_long = df_master.melt(
     id_vars=id_vars,
     value_vars=["AVG_AM_VOL", "AVG_MD_VOL", "AVG_PM_VOL", "AVG_EV_VOL"],
-    var_name="PERIOD_KEY", value_name="OBSERVED_TOTAL"
+    var_name="PERIOD_KEY",
+    value_name="OBSERVED_TOTAL",
 )
 df_obs_long["PERIOD"] = df_obs_long["PERIOD_KEY"].str.split("_").str[1]
 
@@ -463,27 +506,40 @@ df_obs_long["PERIOD"] = df_obs_long["PERIOD_KEY"].str.split("_").str[1]
 df_mod_long = df_master.melt(
     id_vars=id_vars,
     value_vars=["AM_Vol", "MD_Vol", "PM_Vol", "EV_Vol"],
-    var_name="MOD_KEY", value_name="MODELED_TOTAL"
+    var_name="MOD_KEY",
+    value_name="MODELED_TOTAL",
 )
 df_mod_long["PERIOD"] = df_mod_long["MOD_KEY"].str.split("_").str[0]
 
 # C. Merge Long Forms
 df_period = pd.merge(
-    df_obs_long.drop(columns=['PERIOD_KEY']),
-    df_mod_long.drop(columns=['MOD_KEY']),
-    on=id_vars + ['PERIOD'],
-    how='inner'
+    df_obs_long.drop(columns=["PERIOD_KEY"]),
+    df_mod_long.drop(columns=["MOD_KEY"]),
+    on=id_vars + ["PERIOD"],
+    how="left",
 )
 
 # D. Expand Vehicle Types (Auto vs Truck)
 # Calculate Auto %
-df_period["PCT_AUTO"] = 1.0 - (df_period["PCT_SUT"].fillna(0) + df_period["PCT_CUT"].fillna(0))
+df_period["PCT_AUTO"] = 1.0 - (
+    df_period["PCT_SUT"].fillna(0) + df_period["PCT_CUT"].fillna(0)
+)
 
 # Melt Types
 df_long = df_period.melt(
-    id_vars=["STATION", "MATCHED_SEGID", "FTCLASS", "ATYPENAME", "COUNTY_NAME", "PERIOD", "OBSERVED_TOTAL", "MODELED_TOTAL"],
+    id_vars=[
+        "STATION",
+        "MATCHED_SEGID",
+        "FTCLASS",
+        "ATYPENAME",
+        "COUNTY_NAME",
+        "PERIOD",
+        "OBSERVED_TOTAL",
+        "MODELED_TOTAL",
+    ],
     value_vars=["PCT_AUTO", "PCT_SUT", "PCT_CUT"],
-    var_name="TYPE_KEY", value_name="SHARE"
+    var_name="TYPE_KEY",
+    value_name="SHARE",
 )
 
 # Map Names
@@ -510,13 +566,39 @@ df_final["DIFF"] = df_final["MODELED"] - df_final["OBSERVED"]
 df_final["PCT_DIFF"] = (df_final["DIFF"] / df_final["OBSERVED"]).round(3)
 ```
 
-### Export Final Output
+## Step 5: Export Final Output
 
 ```{python}
+# --- 5.1 Export Final Data for OJS Plots ---
 # Export
 final_path = output_dir / "dashboard_data.csv"
 df_final.to_csv(final_path, index=False)
 print(f"Step 4 Complete: Dashboard data ready at {final_path}")
+```
+
+```{python}
+# --- 5.2 Export Geometry for OJS Map ---
+
+# 1. Identify Valid IDs from the Final Dashboard Data
+valid_stations = df_final["STATION"].unique()
+valid_segments = df_final["MATCHED_SEGID"].unique()
+
+# 2. Filter Geometry AND Project to Lat/Lon (EPSG:4326)
+# Leaflet requires EPSG:4326. Without this .to_crs(), points will not show up.
+gdf_out_stations = gdf_ccs_locations[
+    gdf_ccs_locations["STATION"].isin(valid_stations)
+].to_crs("EPSG:4326")
+gdf_out_segments = gdf_network_clean[
+    gdf_network_clean["SEGID"].isin(valid_segments)
+].to_crs("EPSG:4326")
+
+# 3. Export to GeoJSON
+gdf_out_stations.to_file(output_dir / "stations.geojson", driver="GeoJSON")
+gdf_out_segments.to_file(output_dir / "segments.geojson", driver="GeoJSON")
+
+print(f"Step 4 Complete: Map Geometry Exported.")
+print(f"  - Stations: {len(gdf_out_stations)}")
+print(f"  - Segments: {len(gdf_out_segments)}")
 ```
 
 ## Interactive Dashboard
@@ -524,6 +606,7 @@ print(f"Step 4 Complete: Dashboard data ready at {final_path}")
 ```{python}
 # | label: transfer-ojs
 # | echo: false
+# | eval: false
 
 # Transfer the clean dataframe to OJS
 ojs_define(data_py=df_final)
@@ -602,7 +685,7 @@ dash_data = {
 
   // A. Scatter Data (Station Level)
   let scatter = base
-    .groupby("STATION", group_by)
+    .groupby("STATION", "MATCHED_SEGID", group_by)
     .rollup({
       Obs_Total: op.sum('OBSERVED'),
       Mod_Total: op.sum('MODELED')
@@ -780,4 +863,227 @@ Inputs.table(dash_data.summary, {
     Percent_RMSE: d => (d * 100).toFixed(1) + "%"
   }
 })
+```
+
+```{ojs}
+//| label: ojs-map
+//| echo: false
+
+// 1. IMPORT LEAFLET
+L = require("leaflet@1.9.4")
+html`<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">`
+
+// 2. LOAD GEOMETRY
+stations_geo = FileAttachment("_output/stations.geojson").json()
+segments_geo = FileAttachment("_output/segments.geojson").json()
+
+// 3. DRAW REACTIVE MAP
+map_display = {
+  // A. PREPARE DATA
+  const scatter_array = dash_data.scatter.objects();
+
+  // Clean IDs
+  const valid_station_ids = new Set(scatter_array.map(d => String(d.STATION).trim()));
+  const valid_seg_ids = new Set(scatter_array.map(d => String(d.MATCHED_SEGID).trim()));
+
+  // Data Maps
+  const data_map = new Map(scatter_array.map(d => [String(d.STATION).trim(), d]));
+
+  // Connectivity & Attribute Maps
+  const seg_to_stations = new Map();
+  const seg_label_map = new Map(); // <--- New: Maps SEGID to its Group Label (e.g., "Arterial")
+
+  scatter_array.forEach(d => {
+    const s = String(d.MATCHED_SEGID).trim();
+    const st = String(d.STATION).trim();
+
+    // Build Connectivity
+    if(!seg_to_stations.has(s)) seg_to_stations.set(s, []);
+    seg_to_stations.get(s).push(st);
+
+    // Build Attribute Lookup (If segment has multiple stations, they usually share attributes)
+    seg_label_map.set(s, d.Label);
+  });
+
+  // --- COLOR LOGIC ---
+  const current_group = dashboard_ctrls.group_by;
+
+  // Only color by static attributes (skip Period/Vehicle Type)
+  const enable_color = ["FTCLASS", "ATYPENAME", "COUNTY_NAME"].includes(current_group);
+  const palette = ["#4e79a7","#f28e2c","#e15759","#76b7b2","#59a14f","#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac"];
+
+  // Generate Color Map
+  const unique_labels = Array.from(new Set(scatter_array.map(d => d.Label))).sort();
+  const color_map = new Map(unique_labels.map((l, i) => [l, palette[i % palette.length]]));
+
+  // B. SETUP CONTAINER
+  const container = document.createElement("div");
+  container.style.height = "650px";
+  container.style.width = "100%";
+  container.style.borderRadius = "8px";
+  container.style.border = "1px solid #ccc";
+  container.style.zIndex = "1";
+
+  // C. INITIALIZE MAP
+  const map = L.map(container).setView([40.7608, -111.8910], 9);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    maxZoom: 19
+  }).addTo(map);
+
+  setTimeout(() => { map.invalidateSize(); }, 200);
+
+  // --- HELPER FUNCTIONS ---
+  function highlightSegment(segid) {
+    if (!segid) return;
+    const clean_segid = String(segid).trim();
+    segmentLayer.eachLayer(layer => {
+      if (layer._segid === clean_segid) {
+        layer.setStyle({ color: "#00e5ff", weight: 8, opacity: 1.0 });
+        layer.bringToFront();
+      }
+    });
+  }
+
+  function highlightStations(segid) {
+    if (!segid) return;
+    const clean_segid = String(segid).trim();
+    const target_stations = new Set(seg_to_stations.get(clean_segid) || []);
+
+    stationLayer.eachLayer(layer => {
+      if (target_stations.has(layer._station_id)) {
+        layer.setStyle({
+            radius: 4,
+            color: "#00e5ff",
+            weight: 3,
+            fillColor: "#00e5ff",
+            fillOpacity: 1.0
+        });
+        layer.bringToFront();
+      }
+    });
+  }
+
+  function resetAll() {
+    // This restores the original 'style' defined in L.geoJSON options
+    segmentLayer.eachLayer(l => segmentLayer.resetStyle(l));
+    stationLayer.eachLayer(l => stationLayer.resetStyle(l));
+  }
+
+  // D. ADD SEGMENTS (LINES)
+  const filtered_segments = {
+    type: "FeatureCollection",
+    features: segments_geo.features.filter(f => {
+        if (!f.properties.SEGID) return false;
+        return valid_seg_ids.has(String(f.properties.SEGID).trim());
+    })
+  };
+
+  const segmentLayer = L.geoJSON(filtered_segments, {
+    // --- DYNAMIC STYLE FUNCTION ---
+    style: (feature) => {
+      const segid = String(feature.properties.SEGID).trim();
+      const label = seg_label_map.get(segid);
+
+      let finalColor = "#376092"; // Default Blue
+      if (enable_color && label) {
+         finalColor = color_map.get(label) || finalColor;
+      }
+
+      return {
+        color: finalColor,
+        weight: 4,
+        opacity: 0.9
+      };
+    },
+    onEachFeature: (feature, layer) => {
+      const segid = String(feature.properties.SEGID).trim();
+      layer._segid = segid;
+
+      const stations = seg_to_stations.get(segid) || [];
+      const st_label = stations.length > 0 ? stations.join(", ") : "None";
+      const group_label = seg_label_map.get(segid) || "N/A";
+
+      layer.bindPopup(`
+        <div style="font-family:sans-serif; font-size:12px;">
+          <b>Segment: ${segid}</b><br>
+          Group: ${group_label}<br>
+          Connected Stations: ${st_label}
+        </div>
+      `);
+
+      layer.on('mouseover', () => {
+         layer.setStyle({ color: "#00e5ff", weight: 6, opacity: 1.0 });
+         layer.bringToFront();
+         highlightStations(segid);
+      });
+      layer.on('mouseout', () => resetAll());
+    }
+  }).addTo(map);
+
+  // E. ADD STATIONS (POINTS)
+  const filtered_stations = {
+    type: "FeatureCollection",
+    features: stations_geo.features.filter(f => {
+       if (!f.properties.STATION) return false;
+       return valid_station_ids.has(String(f.properties.STATION).trim());
+    })
+  };
+
+  const stationLayer = L.geoJSON(filtered_stations, {
+    pointToLayer: (feature, latlng) => {
+      const id = String(feature.properties.STATION).trim();
+      const stats = data_map.get(id);
+
+      let finalColor = "#77933c"; // Default Green
+      if (enable_color && stats) {
+          finalColor = color_map.get(stats.Label) || finalColor;
+      }
+
+      return L.circleMarker(latlng, {
+        radius: 4,
+        fillColor: finalColor,
+        color: "#1e1e1e",
+        weight: 1,
+        opacity: 0.9,
+        fillOpacity: 0.9
+      });
+    },
+    onEachFeature: (feature, layer) => {
+      const id = String(feature.properties.STATION).trim();
+      layer._station_id = id;
+      const stats = data_map.get(id);
+
+      layer.on('mouseover', () => highlightSegment(stats.MATCHED_SEGID));
+      layer.on('mouseout', () => resetAll());
+
+      if (stats) {
+        const diffColor = stats.Pct_Error > 0 ? '#d9534f' : '#5cb85c';
+        layer.bindPopup(`
+          <div style="font-family: sans-serif; min-width: 160px;">
+            <strong>Station ${id}</strong><br/>
+            <hr style="margin:4px 0; border:0; border-top:1px solid #eee;">
+            Group: <b>${stats.Label}</b><br/>
+            Observed: <b>${Math.round(stats.Obs_Total).toLocaleString()}</b><br/>
+            Modeled: ${Math.round(stats.Mod_Total).toLocaleString()}<br/>
+            Diff: <span style="color:${diffColor}; font-weight:bold;">
+              ${(stats.Pct_Error * 100).toFixed(1)}%
+            </span><br/>
+            <span style="color:#999; font-size:11px;">Seg: ${stats.MATCHED_SEGID}</span>
+          </div>
+        `);
+      }
+    }
+  }).addTo(map);
+
+  // F. FIT BOUNDS
+  if (filtered_stations.features.length > 0) {
+    setTimeout(() => {
+       map.fitBounds(stationLayer.getBounds(), { padding: [50, 50] });
+    }, 250);
+  }
+
+  return container;
+}
 ```
