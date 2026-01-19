@@ -163,23 +163,23 @@ We load the raw input shapefile. We do **not** filter by model results here, ens
 
 ```{python}
 # Load Segments (Input)
-# Note: Using the full shapefile to ensure we catch all potential geometries
+# Source: https://github.com/WFRCAnalytics/WF-TDM-Documentation/tree/v10-calib/v10x/v1000/validation/data/5-assignhwy/seg_shp
 gdf_segments = gpd.read_file(
-    raw_dir / "Segments/WFv910_Segments.shp",
+    raw_dir / "Segments/WFv1000_Segments.shp",
     engine="pyogrio",
 ).to_crs(CRS_UTM)
 
 # Ensure SEGID is string for consistent matching
-gdf_segments['SEGID'] = gdf_segments['SEGID'].astype(str)
+gdf_segments["SEGID"] = gdf_segments["SEGID"].astype(str)
 
 # Parse Route and Milepost from SEGID directly (Independent of Model Results)
-temp_route = gdf_segments['SEGID'].str.split('_').str[0]
-gdf_segments['MODEL_ROUTE'] = pd.to_numeric(temp_route, errors='coerce')
-gdf_segments['MODEL_MP'] = gdf_segments['SEGID'].str.split('_').str[1].astype(float)
+temp_route = gdf_segments["SEGID"].str.split("_").str[0]
+gdf_segments["MODEL_ROUTE"] = pd.to_numeric(temp_route, errors="coerce")
+gdf_segments["MODEL_MP"] = gdf_segments["SEGID"].str.split("_").str[1].astype(float)
 
 # Filter to valid network links for matching
-gdf_network_clean = gdf_segments.dropna(subset=['MODEL_ROUTE', 'MODEL_MP']).copy()
-gdf_network_clean['MODEL_ROUTE'] = gdf_network_clean['MODEL_ROUTE'].astype(int)
+gdf_network_clean = gdf_segments.dropna(subset=["MODEL_ROUTE", "MODEL_MP"]).copy()
+gdf_network_clean["MODEL_ROUTE"] = gdf_network_clean["MODEL_ROUTE"].astype(int)
 
 print(f"Loaded Network with {len(gdf_network_clean)} valid segments.")
 ```
@@ -323,7 +323,7 @@ We attach the static network attributes here.
 
 ```{python}
 # 1. Define Static Attributes from Network
-static_cols = ["SEGID", "CO_FIPS", "SUTRK2022", "CUTRK2022"]
+static_cols = ["SEGID", "CO_FIPS", "SUTRUCKS", "CUTRUCKS"]
 
 # 2. Map County Names
 fips_map = {3: "Box Elder", 11: "Davis", 35: "Salt Lake", 49: "Utah", 57: "Weber"}
@@ -336,7 +336,7 @@ df_network_attrs["COUNTY_NAME"] = (
 
 # 3. Rename Truck Columns for standardization
 df_network_attrs = df_network_attrs.rename(
-    columns={"SUTRK2022": "PCT_SUT", "CUTRK2022": "PCT_CUT"}
+    columns={"SUTRUCKS": "PCT_SUT", "CUTRUCKS": "PCT_CUT"}
 )
 
 # 4. Merge Matches with Attributes
@@ -416,17 +416,16 @@ print(f"Step 2 Complete: Observed data exported to {obs_path}")
 **Objective:** Load the specific scenario results ("Fact Table B").
 
 ```{python}
-# Source: WF-TDM-Development\Scenarios\v1000-calib\BY_2023\5_AssignHwy\4_Summaries\Summary_SEGID_Detailed.csv
-df_segid_detail = pd.read_csv(raw_dir / "Summary_SEGID_Detailed.csv")
+# Source: https://github.com/WFRCAnalytics/WF-TDM-Documentation/tree/v10-calib/v10x/v1000/validation/data/5-assignhwy
+df_segid_detail = pd.read_csv(raw_dir / "WFv1000_BY_2023_Summary_SEGID_Detailed.csv")
 
 # Filter for Total / Bi-Directional
 df_model_clean = df_segid_detail[
-    (df_segid_detail['FUNCGROUP'] == 'Total') &
-    (df_segid_detail['DIRECTION'] == 'Both')
+    (df_segid_detail["FUNCGROUP"] == "Total") & (df_segid_detail["DIRECTION"] == "Both")
 ].copy()
 
 # Ensure SEGID match format
-df_model_clean['SEGID'] = df_model_clean['SEGID'].astype(str)
+df_model_clean["SEGID"] = df_model_clean["SEGID"].astype(str)
 
 print(f"Step 3 Complete: Loaded {len(df_model_clean)} model records.")
 ```

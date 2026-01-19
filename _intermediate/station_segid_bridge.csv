@@ -1,127 +1,127 @@
 STATION,MATCHED_SEGID,MATCH_TYPE,SEGID,COUNTY_NAME,PCT_SUT,PCT_CUT
--757,0006_203.6,Route Match (Spatial),0006_203.6,Utah,0.12395731,0.288365956
--638,0015_242.4,Route Match (Spatial),0015_242.4,Utah,0.094952257,0.136316595
--650,0006_159.8,Route Match (Spatial),0006_159.8,Utah,0.098543856,0.036742364
--654,0178_000.2,Route Match (Spatial),0178_000.2,Utah,0.1761,0.0693
--639,0015_248.8,Route Match (Spatial),0015_248.8,Utah,0.100164969,0.117363758
--655,0015_253.6,Route Match (Spatial),0015_253.6,Utah,0.096087712,0.106386955
--653,0156_001.0,Route Match (Spatial),0156_001.0,Utah,0.095193768,0.021207998
--646,0077_007.4,Route Match (Spatial),0077_007.4,Utah,0.072701096,0.01943646
--664,0089_326.5,Route Match (Spatial),0089_326.5,Utah,0.076237565,0.021190281
--312,0006_181.6,Route Match (Spatial),0006_181.6,Utah,0.071271163,0.116786547
--321,0006_146.9,Route Match (Spatial),0006_146.9,Utah,0.039851674,0.072107328
--327,0006_174.4,Route Match (Spatial),0006_174.4,Utah,0.056890576,0.057209774
--349,0015_246.9,Route Match (Spatial),0015_246.9,Utah,0.102202369,0.122848852
--416,0089_297.1,Route Match (Spatial),0089_297.1,Utah,0.028679486,0.038268127
--611,0015_258.8,Route Match (Spatial),0015_258.8,Utah,0.092007175,0.095401322
--815,0080_104.3,Route Match (Spatial),0080_104.3,Salt Lake,0.098420691,0.095332034
--689,0134_006.5,Route Match (Spatial),0134_006.5,Weber,0.144694779,0.043309484
--832,1485_000.7,Global Fallback (Nearest),1485_000.7,Davis,0.0,0.0
--831,1495_000.0,Global Fallback (Nearest),1495_000.0,Davis,0.0,0.0
--830,1498_000.0,Global Fallback (Nearest),1498_000.0,Davis,0.0,0.0
--848,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.120560258,0.035861367
--850,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.120560258,0.035861367
--851,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.120560258,0.035861367
--849,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.120560258,0.035861367
--687,3310_000.5,Route Match (Spatial),3310_000.5,Weber,0.0,0.0
--686,0013_001.6,Route Match (Spatial),0013_001.6,Box Elder,0.107245845,0.080949487
--829,1435_001.5,Global Fallback (Nearest),1435_001.5,Davis,0.0,0.0
--348,0015_340.3,Route Match (Spatial),0015_340.3,Weber,0.095837088,0.113199452
--355,0171_000.5,Route Match (Spatial),0171_000.5,Salt Lake,0.102072862,0.017145686
--613,0015_357.6,Route Match (Spatial),0015_357.6,Box Elder,0.118649643,0.144848027
--619,0201_008.7,Route Match (Spatial),0201_008.7,Salt Lake,0.136544606,0.064391454
--634,0085_015.5,Route Match (Spatial),0085_015.5,Salt Lake,0.120560258,0.035861367
--847,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.120560258,0.035861367
--820,0154_006.8,Route Match (Spatial),0154_006.8,Salt Lake,0.131655724,0.028082732
--819,0154_008.3,Route Match (Spatial),0154_008.3,Salt Lake,0.12707513,0.027078471
--627,0154_012.9,Route Match (Spatial),0154_012.9,Salt Lake,0.108752755,0.023061426
--657,2889_000.0,Route Match (Spatial),2889_000.0,Utah,0.0,0.0
--633,0085_003.0,Route Match (Spatial),0085_003.0,Salt Lake,0.156848191,0.054487461
--626,0073_034.6,Route Match (Spatial),0073_034.6,Utah,0.13620302,0.071570832
--644,2881_011.9,Route Match (Spatial),2881_011.9,Utah,0.0,0.0
--631,0266_001.7,Route Match (Spatial),0266_001.7,Salt Lake,0.130697798,0.016924141
--636,0154_001.4,Route Match (Spatial),0154_001.4,Salt Lake,0.149978099,0.032099777
--635,0015_286.8,Route Match (Spatial),0015_286.8,Salt Lake,0.077222343,0.060196885
--630,0015_295.6,Route Match (Spatial),0015_295.6,Salt Lake,0.123469688,0.058003999
--680,0015_295.6,Route Match (Spatial),0015_295.6,Salt Lake,0.123469688,0.058003999
--663,0068_027.4,Route Match (Spatial),0068_027.4,Utah,0.073615907,0.035565269
--816,0015_299.0,Route Match (Spatial),0015_299.0,Salt Lake,0.080629475,0.036993492
--648,0194_000.8,Route Match (Spatial),0194_000.8,Utah,0.064195066,0.024310013
--674,0015_283.9,Route Match (Spatial),0015_283.9,Utah,0.077222343,0.060196885
--302,0015_289.8,Route Match (Spatial),0015_289.8,Salt Lake,0.100953714,0.057621312
--662,2878_004.4,Route Match (Spatial),2878_004.4,Utah,0.0,0.0
--817,0215_009.2,Route Match (Spatial),0215_009.2,Salt Lake,0.103560416,0.034169636
--673,0015_279.6,Route Match (Spatial),0015_279.6,Utah,0.084916273,0.065943369
--675,0092_002.4,Route Match (Spatial),0092_002.4,Utah,0.059832584,0.013601154
--676,0092_002.4,Route Match (Spatial),0092_002.4,Utah,0.059832584,0.013601154
--818,0215_007.7,Route Match (Spatial),0215_007.7,Salt Lake,0.094623202,0.030537097
--632,0145_005.3,Route Match (Spatial),0145_005.3,Utah,0.082933493,0.027198012
--672,0015_278.5,Route Match (Spatial),0015_278.5,Utah,0.089117934,0.069081528
--643,2932_001.3,Route Match (Spatial),2932_001.3,Utah,0.0,0.0
--658,0089_349.3,Route Match (Spatial),0089_349.3,Utah,0.141902169,0.050472524
--335,0173_007.7,Route Match (Spatial),0173_007.7,Salt Lake,0.060159394,0.012483865
--351,0215_011.5,Route Match (Spatial),0215_011.5,Salt Lake,0.108000188,0.041183877
--406,0071_015.7,Route Match (Spatial),0071_015.7,Salt Lake,0.080462817,0.027308935
--407,0068_038.1,Route Match (Spatial),0068_038.1,Salt Lake,0.098987515,0.024957909
--617,0215_003.7,Route Match (Spatial),0215_003.7,Salt Lake,0.076748774,0.02327202
--656,0129_004.5,Route Match (Spatial),0129_004.5,Utah,0.075574065,0.020775494
--317,0210_003.9,Route Match (Spatial),0210_003.9,Salt Lake,0.155512858,0.017050045
--645,0129_001.9,Route Match (Spatial),0129_001.9,Utah,0.075574065,0.020775494
--670,0015_272.7,Route Match (Spatial),0015_272.7,Utah,0.104030278,0.080219341
--671,0015_272.7,Route Match (Spatial),0015_272.7,Utah,0.104030278,0.080219341
--647,0089_344.0,Route Match (Spatial),0089_344.0,Utah,0.076453536,0.013811647
--651,0114_005.0,Route Match (Spatial),0114_005.0,Utah,0.067548356,0.019137066
--641,0015_271.6,Route Match (Spatial),0015_271.6,Utah,0.107382158,0.082722812
--669,0015_269.6,Route Match (Spatial),0015_269.6,Utah,0.097540123,0.077782293
--640,0015_270.6,Route Match (Spatial),0015_270.6,Utah,0.100741205,0.075577214
--642,0052_001.0,Route Match (Spatial),0052_001.0,Utah,0.133531213,0.03290166
--306,0015_267.0,Route Match (Spatial),0015_267.0,Utah,0.094336789,0.079988925
--668,0015_264.2,Route Match (Spatial),0015_264.2,Utah,0.0911312,0.082197109
--649,0114_000.0,Route Match (Spatial),0114_000.0,Utah,0.040168042,0.007374432
--661,0052_003.1,Route Match (Spatial),0052_003.1,Utah,0.200639451,0.031713652
--659,0189_002.7,Route Match (Spatial),0189_002.7,Utah,0.04848535,0.018372568
--667,0015_261.8,Route Match (Spatial),0015_261.8,Utah,0.087923353,0.084406849
--665,0015_260.0,Route Match (Spatial),0015_260.0,Utah,0.089965675,0.089905191
--660,0089_329.8,Route Match (Spatial),0089_329.8,Utah,0.066673305,0.020962785
--822,0190_015.7,Route Match (Spatial),0190_015.7,Salt Lake,0.115728113,0.014755416
--319,0189_013.1,Route Match (Spatial),0189_013.1,Utah,0.269296883,0.078297889
--322,0190_001.8,Route Match (Spatial),0190_001.8,Salt Lake,0.115728113,0.014755416
--350,0189_004.0,Route Match (Spatial),0189_004.0,Utah,0.033265963,0.014669359
--601,0092_007.6,Route Match (Spatial),0092_007.6,Utah,0.072961106,0.013109713
--602,0092_018.8,Route Match (Spatial),0092_018.8,Utah,0.229427991,0.04592764
--637,0215_015.5,Route Match (Spatial),0215_015.5,Salt Lake,0.081130875,0.040682205
--354,0171_008.8,Route Match (Spatial),0171_008.8,Salt Lake,0.093048985,0.021769711
--629,0015_303.4,Route Match (Spatial),0015_303.4,Salt Lake,0.053219333,0.034160207
--353,0215_017.5,Route Match (Spatial),0215_017.5,Salt Lake,0.067696218,0.040431369
--341,0080_123.2,Route Match (Spatial),0080_123.2,Salt Lake,0.072693973,0.054050966
--301,0080_128.7,Route Match (Spatial),0080_128.7,Salt Lake,0.093628991,0.095625175
--836,0015_305.2,Route Match (Spatial),0015_305.2,Salt Lake,0.033876906,0.031585185
--837,0015_305.2,Route Match (Spatial),0015_305.2,Salt Lake,0.033876906,0.031585185
--835,0015_305.2,Route Match (Spatial),0015_305.2,Salt Lake,0.033876906,0.031585185
--408,0068_057.3,Route Match (Spatial),0068_057.3,Salt Lake,0.096370355,0.031719482
--333,0071_021.2,Route Match (Spatial),0071_021.2,Salt Lake,0.045077773,0.007444378
--677,0080_136.1,Route Match (Spatial),0080_136.1,Salt Lake,0.112376305,0.109122787
--325,0089_377.3,Route Match (Spatial),0089_377.3,Salt Lake,0.081382267,0.016463509
--332,0186_006.0,Route Match (Spatial),0186_006.0,Salt Lake,0.102271639,0.021622173
--340,0080_117.7,Route Match (Spatial),0080_117.7,Salt Lake,0.103601749,0.041651145
--409,2330_001.0,Route Match (Spatial),2330_001.0,Salt Lake,0.0,0.0
--501,0215_025.7,Route Match (Spatial),0215_025.7,Salt Lake,0.080363917,0.061334591
--628,0215_027.4,Route Match (Spatial),0215_027.4,Davis,0.085430996,0.06969588
--688,1384_000.0,Route Match (Spatial),1384_000.0,Davis,0.0,0.0
--826,0089_385.0,Route Match (Spatial),0089_385.0,Davis,0.142116387,0.019791535
--624,0067_000.0,Route Match (Spatial),0067_000.0,Davis,0.068064151,0.104469514
--315,0015_319.5,Route Match (Spatial),0015_319.5,Davis,0.113261369,0.066428665
--810,0015_319.5,Route Match (Spatial),0015_319.5,Davis,0.113261369,0.066428665
--833,1459_002.0,Global Fallback (Nearest),1459_002.0,Davis,0.0,0.0
--827,0067_010.1,Route Match (Spatial),0067_010.1,Davis,0.125388172,0.103373865
--625,0067_010.1,Route Match (Spatial),0067_010.1,Davis,0.125388172,0.103373865
--834,0089_396.1,Route Match (Spatial),0089_396.1,Davis,0.036836448,0.033070486
--828,1445_001.4,Global Fallback (Nearest),1445_001.4,Davis,0.0,0.0
--616,0015_313.7,Route Match (Spatial),0015_313.7,Davis,0.078416822,0.071476804
--711,0154_020.0,Route Match (Spatial),0154_020.0,Salt Lake,0.038815597,0.022745308
--316,0089_402.2,Route Match (Spatial),0089_402.2,Davis,0.045822502,0.029017831
--813,0089_407.0,Route Match (Spatial),0089_407.0,Weber,0.06379461,0.020912521
--329,0089_412.4,Route Match (Spatial),0089_412.4,Weber,0.077273691,0.014833538
--690,3360_001.7,Route Match (Spatial),3360_001.7,Weber,0.0,0.0
--838,3462_002.8,Route Match (Spatial),3462_002.8,Weber,0.0,0.0
--612,0015_330.1,Route Match (Spatial),0015_330.1,Davis,0.082270993,0.078838247
+-757,0006_203.6,Route Match (Spatial),0006_203.6,Utah,0.1266,0.2944
+-638,0015_242.4,Route Match (Spatial),0015_242.4,Utah,0.1057,0.1217
+-650,0006_159.8,Route Match (Spatial),0006_159.8,Utah,0.1013,0.0387
+-654,0178_000.2,Route Match (Spatial),0178_000.2,Utah,0.1085,0.0568
+-639,0015_248.8,Route Match (Spatial),0015_248.8,Utah,0.1038,0.1083
+-655,0015_253.6,Route Match (Spatial),0015_253.6,Utah,0.0974,0.0987
+-653,0156_001.0,Route Match (Spatial),0156_001.0,Utah,0.1006,0.0221
+-646,0077_007.4,Route Match (Spatial),0077_007.4,Utah,0.076,0.0175
+-664,0089_326.5,Route Match (Spatial),0089_326.5,Utah,0.1085,0.0568
+-312,0006_181.6,Route Match (Spatial),0006_181.6,Utah,0.0676,0.1617
+-321,0006_146.9,Route Match (Spatial),0006_146.9,Utah,0.102,0.0806
+-327,0006_174.4,Route Match (Spatial),0006_174.4,Utah,0.0793,0.0729
+-349,0015_246.9,Route Match (Spatial),0015_246.9,Utah,0.107,0.1131
+-416,0089_297.1,Route Match (Spatial),0089_297.1,Utah,0.1169,0.0491
+-611,0015_258.8,Route Match (Spatial),0015_258.8,Utah,0.091,0.0891
+-815,0080_104.3,Route Match (Spatial),0080_104.3,Salt Lake,0.0746,0.1119
+-689,0134_006.5,Route Match (Spatial),0134_006.5,Weber,0.1447,0.0433
+-832,1485_000.7,Global Fallback (Nearest),1485_000.7,Davis,0.1242,0.0924
+-831,1495_000.0,Global Fallback (Nearest),1495_000.0,Davis,0.1085,0.0568
+-830,1498_000.0,Global Fallback (Nearest),1498_000.0,Davis,0.1242,0.0924
+-848,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.1112,0.0386
+-850,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.1112,0.0386
+-851,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.1112,0.0386
+-849,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.1112,0.0386
+-687,3310_000.5,Route Match (Spatial),3310_000.5,Weber,0.1085,0.0568
+-686,0013_001.6,Route Match (Spatial),0013_001.6,Box Elder,0.1072,0.0809
+-829,1435_001.5,Global Fallback (Nearest),1435_001.5,Davis,0.1242,0.0924
+-348,0015_340.3,Route Match (Spatial),0015_340.3,Weber,0.0959,0.1074
+-355,0171_000.5,Route Match (Spatial),0171_000.5,Salt Lake,0.0518,0.0139
+-613,0015_357.6,Route Match (Spatial),0015_357.6,Box Elder,0.1245,0.1439
+-619,0201_008.7,Route Match (Spatial),0201_008.7,Salt Lake,0.1292,0.0529
+-634,0085_015.5,Route Match (Spatial),0085_015.5,Salt Lake,0.1112,0.0386
+-847,0085_018.7,Route Match (Spatial),0085_018.7,Salt Lake,0.1112,0.0386
+-820,0154_006.8,Route Match (Spatial),0154_006.8,Salt Lake,0.1349,0.025
+-819,0154_008.3,Route Match (Spatial),0154_008.3,Salt Lake,0.1307,0.024
+-627,0154_012.9,Route Match (Spatial),0154_012.9,Salt Lake,0.1137,0.0202
+-657,2889_000.0,Route Match (Spatial),2889_000.0,Utah,0.1085,0.0568
+-633,0085_003.0,Route Match (Spatial),0085_003.0,Salt Lake,0.1765,0.0383
+-626,0073_034.6,Route Match (Spatial),0073_034.6,Utah,0.1362,0.0716
+-644,2881_011.9,Route Match (Spatial),2881_011.9,Utah,0.1242,0.0924
+-631,0266_001.7,Route Match (Spatial),0266_001.7,Salt Lake,0.1576,0.0229
+-636,0154_001.4,Route Match (Spatial),0154_001.4,Salt Lake,0.1519,0.0288
+-635,0015_286.8,Route Match (Spatial),0015_286.8,Salt Lake,0.0702,0.0566
+-630,0015_295.6,Route Match (Spatial),0015_295.6,Salt Lake,0.116,0.0532
+-680,0015_295.6,Route Match (Spatial),0015_295.6,Salt Lake,0.116,0.0532
+-663,0068_027.4,Route Match (Spatial),0068_027.4,Utah,0.0681,0.0256
+-816,0015_299.0,Route Match (Spatial),0015_299.0,Salt Lake,0.0828,0.0365
+-648,0194_000.8,Route Match (Spatial),0194_000.8,Utah,0.1242,0.0924
+-674,0015_283.9,Route Match (Spatial),0015_283.9,Utah,0.0702,0.0566
+-302,0015_289.8,Route Match (Spatial),0015_289.8,Salt Lake,0.101,0.0576
+-662,2878_004.4,Route Match (Spatial),2878_004.4,Utah,0.1242,0.0924
+-817,0215_009.2,Route Match (Spatial),0215_009.2,Salt Lake,0.1004,0.0326
+-673,0015_279.6,Route Match (Spatial),0015_279.6,Utah,0.0798,0.0618
+-675,0092_002.4,Route Match (Spatial),0092_002.4,Utah,0.0657,0.0132
+-676,0092_002.4,Route Match (Spatial),0092_002.4,Utah,0.0657,0.0132
+-818,0215_007.7,Route Match (Spatial),0215_007.7,Salt Lake,0.0907,0.0286
+-632,0145_005.3,Route Match (Spatial),0145_005.3,Utah,0.0858,0.0241
+-672,0015_278.5,Route Match (Spatial),0015_278.5,Utah,0.085,0.0646
+-643,2932_001.3,Route Match (Spatial),2932_001.3,Utah,0.1085,0.0568
+-658,0089_349.3,Route Match (Spatial),0089_349.3,Utah,0.1328,0.0446
+-335,0173_007.7,Route Match (Spatial),0173_007.7,Salt Lake,0.0637,0.0131
+-351,0215_011.5,Route Match (Spatial),0215_011.5,Salt Lake,0.1052,0.0392
+-406,0071_015.7,Route Match (Spatial),0071_015.7,Salt Lake,0.0816,0.0268
+-407,0068_038.1,Route Match (Spatial),0068_038.1,Salt Lake,0.0849,0.0221
+-617,0215_003.7,Route Match (Spatial),0215_003.7,Salt Lake,0.0713,0.0207
+-656,0129_004.5,Route Match (Spatial),0129_004.5,Utah,0.071,0.0182
+-317,0210_003.9,Route Match (Spatial),0210_003.9,Salt Lake,0.1599,0.0193
+-645,0129_001.9,Route Match (Spatial),0129_001.9,Utah,0.1051,0.0443
+-670,0015_272.7,Route Match (Spatial),0015_272.7,Utah,0.1035,0.0745
+-671,0015_272.7,Route Match (Spatial),0015_272.7,Utah,0.1035,0.0745
+-647,0089_344.0,Route Match (Spatial),0089_344.0,Utah,0.0801,0.0144
+-651,0114_005.0,Route Match (Spatial),0114_005.0,Utah,0.0668,0.0209
+-641,0015_271.6,Route Match (Spatial),0015_271.6,Utah,0.1077,0.0767
+-669,0015_269.6,Route Match (Spatial),0015_269.6,Utah,0.0969,0.0707
+-640,0015_270.6,Route Match (Spatial),0015_270.6,Utah,0.101,0.0678
+-642,0052_001.0,Route Match (Spatial),0052_001.0,Utah,0.1344,0.0328
+-306,0015_267.0,Route Match (Spatial),0015_267.0,Utah,0.0832,0.065
+-668,0015_264.2,Route Match (Spatial),0015_264.2,Utah,0.0887,0.0765
+-649,0114_000.0,Route Match (Spatial),0114_000.0,Utah,0.0412,0.0079
+-661,0052_003.1,Route Match (Spatial),0052_003.1,Utah,0.2006,0.0317
+-659,0189_002.7,Route Match (Spatial),0189_002.7,Utah,0.1051,0.0443
+-667,0015_261.8,Route Match (Spatial),0015_261.8,Utah,0.0846,0.0795
+-665,0015_260.0,Route Match (Spatial),0015_260.0,Utah,0.0878,0.0843
+-660,0089_329.8,Route Match (Spatial),0089_329.8,Utah,0.0748,0.0242
+-822,0190_015.7,Route Match (Spatial),0190_015.7,Salt Lake,0.0953,0.0202
+-319,0189_013.1,Route Match (Spatial),0189_013.1,Utah,0.2773,0.0764
+-322,0190_001.8,Route Match (Spatial),0190_001.8,Salt Lake,0.1229,0.0159
+-350,0189_004.0,Route Match (Spatial),0189_004.0,Utah,0.0456,0.0164
+-601,0092_007.6,Route Match (Spatial),0092_007.6,Utah,0.0864,0.0129
+-602,0092_018.8,Route Match (Spatial),0092_018.8,Utah,0.2299,0.0505
+-637,0215_015.5,Route Match (Spatial),0215_015.5,Salt Lake,0.0761,0.0366
+-354,0171_008.8,Route Match (Spatial),0171_008.8,Salt Lake,0.0998,0.0213
+-629,0015_303.4,Route Match (Spatial),0015_303.4,Salt Lake,0.0541,0.034
+-353,0215_017.5,Route Match (Spatial),0215_017.5,Salt Lake,0.0615,0.0353
+-341,0080_123.2,Route Match (Spatial),0080_123.2,Salt Lake,0.0788,0.0507
+-301,0080_128.7,Route Match (Spatial),0080_128.7,Salt Lake,0.0997,0.0892
+-836,0015_305.2,Route Match (Spatial),0015_305.2,Salt Lake,0.0339,0.0316
+-837,0015_305.2,Route Match (Spatial),0015_305.2,Salt Lake,0.0339,0.0316
+-835,0015_305.2,Route Match (Spatial),0015_305.2,Salt Lake,0.0339,0.0316
+-408,0068_057.3,Route Match (Spatial),0068_057.3,Salt Lake,0.0783,0.0287
+-333,0071_021.2,Route Match (Spatial),0071_021.2,Salt Lake,0.0356,0.0056
+-677,0080_136.1,Route Match (Spatial),0080_136.1,Salt Lake,0.1141,0.1051
+-325,0089_377.3,Route Match (Spatial),0089_377.3,Salt Lake,0.0885,0.0164
+-332,0186_006.0,Route Match (Spatial),0186_006.0,Salt Lake,0.1174,0.0252
+-340,0080_117.7,Route Match (Spatial),0080_117.7,Salt Lake,0.1036,0.0417
+-409,2330_001.0,Route Match (Spatial),2330_001.0,Salt Lake,0.1051,0.0443
+-501,0215_025.7,Route Match (Spatial),0215_025.7,Salt Lake,0.0872,0.056
+-628,0215_027.4,Route Match (Spatial),0215_027.4,Davis,0.0974,0.0643
+-688,1384_000.0,Route Match (Spatial),1384_000.0,Davis,0.1085,0.0568
+-826,0089_385.0,Route Match (Spatial),0089_385.0,Davis,0.1421,0.0198
+-624,0067_000.0,Route Match (Spatial),0067_000.0,Davis,0.0646,0.0957
+-315,0015_319.5,Route Match (Spatial),0015_319.5,Davis,0.0568,0.0526
+-810,0015_319.5,Route Match (Spatial),0015_319.5,Davis,0.0568,0.0526
+-833,1459_002.0,Global Fallback (Nearest),1459_002.0,Davis,0.1085,0.0568
+-827,0067_010.1,Route Match (Spatial),0067_010.1,Davis,0.1288,0.0997
+-625,0067_010.1,Route Match (Spatial),0067_010.1,Davis,0.1288,0.0997
+-834,0089_396.1,Route Match (Spatial),0089_396.1,Davis,0.0765,0.0354
+-828,1445_001.4,Global Fallback (Nearest),1445_001.4,Davis,0.1085,0.0568
+-616,0015_313.7,Route Match (Spatial),0015_313.7,Davis,0.0873,0.0728
+-711,0154_020.0,Route Match (Spatial),0154_020.0,Salt Lake,0.0388,0.0227
+-316,0089_402.2,Route Match (Spatial),0089_402.2,Davis,0.0783,0.0313
+-813,0089_407.0,Route Match (Spatial),0089_407.0,Weber,0.082,0.023
+-329,0089_412.4,Route Match (Spatial),0089_412.4,Weber,0.0845,0.0149
+-690,3360_001.7,Route Match (Spatial),3360_001.7,Weber,0.1051,0.0443
+-838,3462_002.8,Route Match (Spatial),3462_002.8,Weber,0.1867,0.1413
+-612,0015_330.1,Route Match (Spatial),0015_330.1,Davis,0.0857,0.0713
