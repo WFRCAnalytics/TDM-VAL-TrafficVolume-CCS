@@ -245,19 +245,43 @@ print(f"Total Stations Loaded (Region): {len(gdf_ccs_locations)}")
 ### Run Spatial Matching Logic
 
 ```{python}
+# 1. Define FC Mapping (UDOT Station FC -> Model FUNCGROUP)
+# Add or refine these mappings based on your data
+fc_map = {
+    # Freeways
+    "Urban Principal Arterial - Interstate": "Freeway",
+    "Rural Principal Arterial - Interstate": "Freeway",
+    "Urban Principal Arterial - Other Freeways": "Freeway",  # Default mapping
+    # Arterials
+    "Urban Principal Arterial - Other": "Arterial",
+    "Urban Minor Arterial": "Arterial",
+    "Rural Principal Arterial - Other": "Arterial",
+    "Rural Minor Arterial": "Arterial",
+    # Collector/Distributor
+    "Urban Major Collector": "CD Road",
+    "Urban Minor Collector": "CD Road",
+    "Urban Collector": "CD Road",
+    "Rural Major Collector": "CD Road",
+    "Urban Local System": "CD Road",  # Fallback
+}
+```
+
+```{python}
 match_results = []
 used_segids = set()
 
-print("Starting Route-Constrained Spatial Matching...")
+print("Starting Route & Group Constrained Spatial Matching...")
 
 for idx, ccs_row in gdf_ccs_locations.iterrows():
     station_id = ccs_row["STATION"]
     target_route = ccs_row["ROUTE"]
 
+    # Identify the Target Group based on Station FC
+    # Default to "Total" if FC is missing or unknown
+    station_fc = ccs_row.get("FC", None)
+    target_group = fc_map.get(station_fc, "Total")
+
     # --- PASS 1: Route-Constrained Spatial Match ---
-    # Filter Network to the specific Route first.
-    # This solves the specific MP issue you saw (e.g., Station -816) by picking
-    # the closest segment on Route 15, ignoring slight MP drifts.
     route_segments = gdf_network_clean[gdf_network_clean["MODEL_ROUTE"] == target_route]
 
     matched_segid = None
@@ -282,34 +306,29 @@ for idx, ccs_row in gdf_ccs_locations.iterrows():
         {
             "STATION": station_id,
             "MATCHED_SEGID": matched_segid,
+            "MATCHED_GROUP": target_group,  # <--- NEW: Store the Target Group
             "MATCH_TYPE": match_type,
             "geometry": ccs_row["geometry"],
         }
     )
 
 # --- PASS 2: Global Spatial Fallback (Unrestricted) ---
-# If Pass 1 failed (e.g., Route ID didn't match), snap to the nearest available segment anywhere.
+# (Same as your original code, but ensure we add MATCHED_GROUP = "Total" for fallbacks)
 for i, result in enumerate(match_results):
     if result["MATCHED_SEGID"] is None:
         station_geom = result["geometry"]
-
-        # Filter available segments (Exclude those already snapped in Pass 1)
         available_segments = gdf_network_clean[
             ~gdf_network_clean["SEGID"].isin(used_segids)
         ]
 
         if not available_segments.empty:
-            # Calculate distance to ALL remaining segments
             distances = available_segments.distance(station_geom)
-
-            # Snap to the nearest one, regardless of distance
             min_dist_idx = distances.idxmin()
             best_match = available_segments.loc[min_dist_idx]
 
             match_results[i]["MATCHED_SEGID"] = best_match["SEGID"]
+            match_results[i]["MATCHED_GROUP"] = "Total"  # Fallback is always Total
             match_results[i]["MATCH_TYPE"] = "Global Fallback (Nearest)"
-
-            # Mark as used so future fallbacks don't grab it
             used_segids.add(best_match["SEGID"])
 
 # Create DataFrame
@@ -419,10 +438,10 @@ print(f"Step 2 Complete: Observed data exported to {obs_path}")
 # Source: https://github.com/WFRCAnalytics/WF-TDM-Documentation/tree/v10-calib/v10x/v1000/validation/data/5-assignhwy
 df_segid_detail = pd.read_csv(raw_dir / "WFv1000_BY_2023_Summary_SEGID_Detailed.csv")
 
-# Filter for Total / Bi-Directional
-df_model_clean = df_segid_detail[
-    (df_segid_detail["FUNCGROUP"] == "Total") & (df_segid_detail["DIRECTION"] == "Both")
-].copy()
+# Filter for Bi-Directional Only
+# REMOVED: (df_segid_detail["FUNCGROUP"] == "Total")
+# We keep ALL groups (Freeway, Arterial, CD Road, Total)
+df_model_clean = df_segid_detail[(df_segid_detail["DIRECTION"] == "Both")].copy()
 
 # Ensure SEGID match format
 df_model_clean["SEGID"] = df_model_clean["SEGID"].astype(str)
@@ -464,6 +483,7 @@ if "df_valid_obs" not in locals():
 # We pull FTCLASS and ATYPENAME from the Model Results now
 model_cols_needed = [
     "SEGID",
+    "FUNCGROUP",
     "AM_Vol",
     "MD_Vol",
     "PM_Vol",
@@ -475,14 +495,34 @@ model_cols_needed = [
 
 # Safety check: ensure these columns actually exist in the model output
 available_cols = [c for c in model_cols_needed if c in df_model_clean.columns]
+df_model_subset = df_model_clean[available_cols].copy()
 
-# We join the Model Volume to the BRIDGE SEGID
-df_master = df_valid_obs.merge(
-    df_model_clean[available_cols],
-    left_on="MATCHED_SEGID",
-    right_on="SEGID",
+# Join 1: Attempt to match exact FUNCGROUP (e.g., Station Freeway -> Model Freeway)
+df_join_specific = df_valid_obs.merge(
+    df_model_subset,
+    left_on=["MATCHED_SEGID", "MATCHED_GROUP"],
+    right_on=["SEGID", "FUNCGROUP"],
     how="inner",
 )
+
+# Identify which Stations were successfully matched
+matched_stations = set(df_join_specific["STATION"])
+
+# Filter remaining unmatched stations
+df_remaining = df_valid_obs[~df_valid_obs["STATION"].isin(matched_stations)].copy()
+
+# Join 2: Fallback to "Total" for remaining stations
+# (e.g., Station is Arterial, but Model only has a 'Total' row for this simple segment)
+df_remaining["FALLBACK_GROUP"] = "Total"
+df_join_fallback = df_remaining.merge(
+    df_model_subset,
+    left_on=["MATCHED_SEGID", "FALLBACK_GROUP"],
+    right_on=["SEGID", "FUNCGROUP"],
+    how="inner",
+)
+
+# C. Combine Results
+df_master = pd.concat([df_join_specific, df_join_fallback], ignore_index=True)
 
 # Fill missing model volumes with 0 (assuming no flow if missing from summary)
 vol_cols = ["AM_Vol", "MD_Vol", "PM_Vol", "EV_Vol", "DY_Vol"]
